@@ -1,0 +1,35 @@
+# Environment and credential files
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Node dependencies and generated output
+node_modules/
+dist/
+out/
+build/
+coverage/
+*.tsbuildinfo
+.npm/
+
+# Python environments and generated files
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Extension test profiles and local tooling
+.vscode-test/
+.kiro-test-*/
+.kiro-key-test-*/
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini

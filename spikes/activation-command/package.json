@@ -1,0 +1,29 @@
+{
+  "name": "kirosight-activation-spike",
+  "displayName": "KiroSight Activation Spike",
+  "description": "Throwaway Spike A extension for validating command registration.",
+  "version": "0.0.1",
+  "publisher": "kirosight-local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:kirosight.activate"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "kirosight.activate",
+        "title": "KiroSight: Activate (Spike)"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node smoke-test.js"
+  }
+}
