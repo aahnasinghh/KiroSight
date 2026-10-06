@@ -65,7 +65,7 @@ Scope guardrails taken from the approved spec:
   - [x] 1.7 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: run `KiroSight: Activate` from the command palette with no keybinding and read the text confirmation in the output channel.
 
-- [ ] 2. Milestone 2: Structured IDE context and local text description
+- [x] 2. Milestone 2: Structured IDE context and local text description
   - Extension-only. Describe the current file, cursor, selection and enclosing symbol as text. There is no Python, WebSocket, Bedrock or Deepgram in this milestone, and no webview yet.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 12.1, 12.2_
 
@@ -115,15 +115,15 @@ Scope guardrails taken from the approved spec:
     - Implement `response/responseSink.ts`: an interface plus an implementation that writes to the KiroSight `OutputChannel` and shows a notification. Later milestones add the Transcript as another sink without changing callers.
     - _Requirements: 1.5_
 
-  - [ ]* 2.11 Write example tests for ContextService and ResponseSink
+  - [x]* 2.11 Write example tests for ContextService and ResponseSink
     - With the fake adapter: no active editor, non-empty and empty selection, cursor outside any symbol, symbol provider unavailable, and large files (the excerpt bound holds). Assert the sink receives the formatted text.
     - _Requirements: 1.1, 1.2, 1.4, 1.5_
 
-  - [ ] 2.12 Wire the Milestone 2 command path
+  - [x] 2.12 Wire the Milestone 2 command path
     - In `extension.ts`, construct the adapter, `SymbolService`, `ContextService`, `ContextFormatter` and `ResponseSink`. Register `kirosight.whereAmI`, which prints the formatted description to the sink. Route the activation confirmation from task 1.4 through the sink.
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-  - [ ] 2.13 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 2.13 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: run `KiroSight: Where Am I` and read "You're editing src/login.ts at line 32, column 5, in function validateLogin." in the output channel, and check the no-file-open case.
 
 - [ ] 3. Milestone 3: Diagnostics and deterministic navigation

@@ -13,7 +13,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:kirosight.activate"
+    "onCommand:kirosight.activate",
+    "onCommand:kirosight.whereAmI"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -24,6 +25,10 @@
       {
         "command": "kirosight.activate",
         "title": "KiroSight: Activate"
+      },
+      {
+        "command": "kirosight.whereAmI",
+        "title": "KiroSight: Where Am I"
       }
     ],
     "keybindings": [

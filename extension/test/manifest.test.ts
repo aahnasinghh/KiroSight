@@ -66,6 +66,21 @@ describe('extension manifest', () => {
     expect(activationPaletteRules.every((rule) => rule.when === undefined)).toBe(true);
   });
 
+  it('contributes the Where Am I command without a keybinding', () => {
+    const command = manifest.contributes?.commands?.find(
+      (candidate) => candidate.command === 'kirosight.whereAmI',
+    );
+
+    expect(command).toEqual({
+      command: 'kirosight.whereAmI',
+      title: 'KiroSight: Where Am I',
+    });
+    expect(manifest.activationEvents).toContain('onCommand:kirosight.whereAmI');
+    expect(manifest.contributes?.keybindings?.some(
+      (binding) => binding.command === 'kirosight.whereAmI',
+    )).toBe(false);
+  });
+
   it('matches the default keybinding to the recorded Spike A decision', () => {
     const activationBindings = (manifest.contributes?.keybindings ?? []).filter(
       (binding) => binding.command === 'kirosight.activate',
