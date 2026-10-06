@@ -130,24 +130,24 @@ Scope guardrails taken from the approved spec:
   - Extension-only. Diagnostics reporting, the allow-list registry, the validator and executor for the navigation actions, and the pure local intent router. There is no symbol navigation and no `RUN_COMMAND`.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7, 5.8_
 
-  - [ ] 3.1 Implement DiagnosticsService
+  - [x] 3.1 Implement DiagnosticsService
     - Implement `context/diagnosticsService.ts` using `vscode.languages.getDiagnostics` through the adapter: map raw diagnostics to `DiagnosticInfo`, filter by scope (workspace or current file), and provide `compareForReport` (severity, then path, then line) and `compareForNavigation` (path, then line, with a stable sort keeping the reported order for identical path and line). Report "no file is open" for a file-scope request with no editor, and "no diagnostics found" for an empty result.
     - Fill the diagnostics fields of `IDEContext` in `ContextService` (capped at `MAX_DIAGNOSTICS_SENT`, with full counts).
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [ ]* 3.2 Write property test for diagnostics scoping and ordering
+  - [x]* 3.2 Write property test for diagnostics scoping and ordering
     - **Property 15: Diagnostics are scoped and ordered as specified**
     - **Validates: Requirements 2.1, 2.2**
 
-  - [ ] 3.3 Implement diagnostics formatting
+  - [x] 3.3 Implement diagnostics formatting
     - Extend `context/contextFormatter.ts` with diagnostic reports that include file name, line and the enclosing symbol name only when one is known (looked up through `SymbolService`), state "no diagnostics found" for an empty list, and state "no file is open" when appropriate.
     - _Requirements: 2.3, 2.4, 16.1, 16.2_
 
-  - [ ]* 3.4 Write property test for concrete diagnostic reports
+  - [x]* 3.4 Write property test for concrete diagnostic reports
     - **Property 20: Diagnostic reports are concrete**
     - **Validates: Requirements 2.4, 16.1, 16.2**
 
-  - [ ] 3.5 Implement the action types, extension-side allow-list and ActionValidator
+  - [x] 3.5 Implement the action types, extension-side allow-list and ActionValidator
     - Implement `actions/actionTypes.ts` (the `Action` union with exactly the eight actions) and `actions/allowlist.ts` (`ALLOWLIST: Record<Action['type'], { risk }>` with `RUN_TESTS` as `needs-confirmation` and everything else `safe`). Commit the shared parity fixture `protocol/fixtures/allowlist.json` (action name, risk, parameter names).
     - Implement `actions/actionValidator.ts`: exact case-sensitive `type` match, strict per-action parameter schemas (zod) with bounds, rejection of unknown and extra properties (`command`, `cmd`, `shell`, `args`), identical behavior for local and agent origins, and the registry risk class returned on success. Names such as `GO_TO_SYMBOL` and `RUN_COMMAND` return `UNKNOWN_ACTION`.
     - _Requirements: 4.8, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7, 5.8_

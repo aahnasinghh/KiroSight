@@ -1,0 +1,12 @@
+{
+  "actions": [
+    { "name": "NO_ACTION", "risk": "safe", "parameters": [] },
+    { "name": "GO_TO_DIAGNOSTIC", "risk": "safe", "parameters": ["index", "severity"] },
+    { "name": "NEXT_DIAGNOSTIC", "risk": "safe", "parameters": ["severity"] },
+    { "name": "PREVIOUS_DIAGNOSTIC", "risk": "safe", "parameters": ["severity"] },
+    { "name": "OPEN_FILE", "risk": "safe", "parameters": ["path"] },
+    { "name": "GO_TO_LINE", "risk": "safe", "parameters": ["line"] },
+    { "name": "FOCUS_EDITOR", "risk": "safe", "parameters": [] },
+    { "name": "RUN_TESTS", "risk": "needs-confirmation", "parameters": [] }
+  ]
+}

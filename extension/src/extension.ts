@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { registerCommands } from './commands/registerCommands';
 import { ContextService } from './context/contextService';
+import { DiagnosticsService } from './context/diagnosticsService';
 import { formatWhereAmI } from './context/contextFormatter';
 import { VscodeEditorAdapter } from './context/editorAdapter';
 import { SymbolService } from './context/symbolService';
@@ -15,7 +16,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const responseSink = new VscodeResponseSink(outputChannel);
   const editorAdapter = new VscodeEditorAdapter();
   const symbolService = new SymbolService(editorAdapter);
-  const contextService = new ContextService(editorAdapter, symbolService);
+  const diagnosticsService = new DiagnosticsService(editorAdapter);
+  const contextService = new ContextService(editorAdapter, symbolService, diagnosticsService);
 
   const commandRegistrations = registerCommands({
     activate: () => {

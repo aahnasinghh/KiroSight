@@ -1,4 +1,6 @@
+import type { DiagnosticsResult } from './diagnosticsService';
 import type { IDEContext } from './editorAdapter';
+import { SymbolService } from './symbolService';
 
 const NO_FILE_OPEN = 'No file is open.';
 
@@ -66,4 +68,55 @@ export function formatSelection(context: IDEContext): string {
 
   const truncated = context.nearbyCode.truncated ? ' The selected text was truncated.' : '';
   return `Selected text from line ${context.selection.start.line}, column ${context.selection.start.column} to line ${context.selection.end.line}, column ${context.selection.end.column}:${truncated}\n${context.nearbyCode.text}`;
+}
+
+export type DiagnosticPathResolver = (relativePath: string) => string | null;
+
+function diagnosticSeverity(severity: IDEContext['diagnostics'][number]['severity']): string {
+  return severity.charAt(0).toUpperCase() + severity.slice(1);
+}
+
+async function formatDiagnostic(
+  diagnostic: IDEContext['diagnostics'][number],
+  symbolService: SymbolService,
+  resolvePath: DiagnosticPathResolver,
+): Promise<string> {
+  const fsPath = resolvePath(diagnostic.relativePath);
+  let symbolText = '';
+
+  if (fsPath !== null) {
+    const symbolResult = await symbolService.lookup(fsPath, {
+      line: diagnostic.line,
+      column: diagnostic.column,
+    });
+    if (symbolResult.status === 'found') {
+      symbolText = `, in ${symbolKind(symbolResult.symbol.kind)} ${symbolResult.symbol.name}`;
+    }
+  }
+
+  return `${diagnosticSeverity(diagnostic.severity)} in ${diagnostic.relativePath} at line ${diagnostic.line}${symbolText}: ${diagnostic.message}`;
+}
+
+export async function formatDiagnostics(
+  result: DiagnosticsResult,
+  symbolService: SymbolService,
+  resolvePath: DiagnosticPathResolver,
+): Promise<string> {
+  if (result.status === 'no_file_open') {
+    return NO_FILE_OPEN;
+  }
+
+  if (result.status === 'no_diagnostics') {
+    return 'No diagnostics found.';
+  }
+
+  const lines = await Promise.all(
+    result.diagnostics.map((diagnostic) =>
+      formatDiagnostic(diagnostic, symbolService, resolvePath),
+    ),
+  );
+
+  return lines.length === 1
+    ? lines[0]
+    : `Diagnostics:\n${lines.map((line) => `- ${line}`).join('\n')}`;
 }

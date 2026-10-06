@@ -4,7 +4,8 @@ import type {
   Pos,
   SymbolNode,
 } from './editorAdapter';
-import { selectExcerpt } from './contextWindow';
+import { MAX_DIAGNOSTICS_SENT, selectExcerpt } from './contextWindow';
+import { DiagnosticsService } from './diagnosticsService';
 import { SymbolService } from './symbolService';
 
 export type WireIDEContext = Omit<IDEContext, 'activeFile'>;
@@ -15,6 +16,16 @@ const EMPTY_DIAGNOSTIC_COUNTS = {
   information: 0,
   hint: 0,
 } as const;
+
+function diagnosticCounts(diagnostics: IDEContext['diagnostics']): IDEContext['diagnosticCounts'] {
+  return diagnostics.reduce(
+    (counts, diagnostic) => ({
+      ...counts,
+      [diagnostic.severity]: counts[diagnostic.severity] + 1,
+    }),
+    { ...EMPTY_DIAGNOSTIC_COUNTS },
+  );
+}
 
 function noEditorContext(): IDEContext {
   return {
@@ -80,6 +91,7 @@ export class ContextService {
   public constructor(
     private readonly adapter: EditorAdapter,
     private readonly symbolService: SymbolService,
+    private readonly diagnosticsService = new DiagnosticsService(adapter),
   ) {}
 
   public async getContext(): Promise<IDEContext> {
@@ -119,6 +131,9 @@ export class ContextService {
       }
     }
 
+    const diagnosticsResult = this.diagnosticsService.getDiagnostics('workspace');
+    const allDiagnostics = diagnosticsResult.diagnostics;
+
     return {
       workspace: {
         name: snapshot.workspaceName,
@@ -132,8 +147,8 @@ export class ContextService {
       nearbyCode: selectExcerpt(snapshot, enclosingRange),
       currentSymbol,
       symbolStatus,
-      diagnostics: [],
-      diagnosticCounts: { ...EMPTY_DIAGNOSTIC_COUNTS },
+      diagnostics: allDiagnostics.slice(0, MAX_DIAGNOSTICS_SENT),
+      diagnosticCounts: diagnosticCounts(allDiagnostics),
     };
   }
 }
