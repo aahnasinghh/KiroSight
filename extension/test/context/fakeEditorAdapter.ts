@@ -1,6 +1,7 @@
 import type {
   EditorAdapter,
   EditorSnapshot,
+  FileMatch,
   Pos,
   RawDiagnostic,
   SymbolQueryResult,
@@ -10,7 +11,7 @@ export interface FakeEditorAdapterOptions {
   snapshot?: EditorSnapshot | null;
   diagnostics?: RawDiagnostic[];
   symbolResult?: SymbolQueryResult;
-  files?: string[];
+  files?: Array<string | FileMatch>;
 }
 
 export class FakeEditorAdapter implements EditorAdapter {
@@ -21,13 +22,17 @@ export class FakeEditorAdapter implements EditorAdapter {
   private readonly editorSnapshot: EditorSnapshot | null;
   private readonly diagnostics: RawDiagnostic[];
   private readonly symbolResult: SymbolQueryResult;
-  private readonly files: string[];
+  private readonly files: FileMatch[];
 
   public constructor(options: FakeEditorAdapterOptions = {}) {
     this.editorSnapshot = options.snapshot ?? null;
     this.diagnostics = [...(options.diagnostics ?? [])];
     this.symbolResult = options.symbolResult ?? { status: 'provider_unavailable' };
-    this.files = [...(options.files ?? [])];
+    this.files = (options.files ?? []).map((file) =>
+      typeof file === 'string'
+        ? { fsPath: `C:/workspace/${file}`, relativePath: file }
+        : { ...file },
+    );
   }
 
   public snapshot(): EditorSnapshot | null {
@@ -50,8 +55,8 @@ export class FakeEditorAdapter implements EditorAdapter {
     this.opened.push(fsPath);
   }
 
-  public async findFiles(_name: string): Promise<string[]> {
-    return [...this.files];
+  public async findFiles(_name: string): Promise<FileMatch[]> {
+    return this.files.map((file) => ({ ...file }));
   }
 
   public async focusEditor(): Promise<void> {

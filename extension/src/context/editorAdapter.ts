@@ -88,13 +88,18 @@ export interface EditorSnapshot {
   getLines(startLine: number, endLine: number): string[];
 }
 
+export interface FileMatch {
+  fsPath: string;
+  relativePath: string;
+}
+
 export interface EditorAdapter {
   snapshot(): EditorSnapshot | null;
   allDiagnostics(): RawDiagnostic[];
   documentSymbols(fsPath: string): Promise<SymbolQueryResult>;
   reveal(fsPath: string, pos: Pos): Promise<void>;
   openFile(fsPath: string): Promise<void>;
-  findFiles(name: string): Promise<string[]>;
+  findFiles(name: string): Promise<FileMatch[]>;
   focusEditor(): Promise<void>;
 }
 
@@ -136,6 +141,10 @@ function toSymbolNode(
 
 function toRelativePath(uri: vscode.Uri): string {
   return vscode.workspace.asRelativePath(uri, false);
+}
+
+function toFileMatch(uri: vscode.Uri): FileMatch {
+  return { fsPath: uri.fsPath, relativePath: toRelativePath(uri) };
 }
 
 export class VscodeEditorAdapter implements EditorAdapter {
@@ -217,9 +226,9 @@ export class VscodeEditorAdapter implements EditorAdapter {
     await vscode.window.showTextDocument(document);
   }
 
-  public async findFiles(name: string): Promise<string[]> {
+  public async findFiles(name: string): Promise<FileMatch[]> {
     const files = await vscode.workspace.findFiles(name);
-    return files.map(toRelativePath);
+    return files.map(toFileMatch);
   }
 
   public async focusEditor(): Promise<void> {

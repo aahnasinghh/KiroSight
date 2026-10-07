@@ -152,23 +152,23 @@ Scope guardrails taken from the approved spec:
     - Implement `actions/actionValidator.ts`: exact case-sensitive `type` match, strict per-action parameter schemas (zod) with bounds, rejection of unknown and extra properties (`command`, `cmd`, `shell`, `args`), identical behavior for local and agent origins, and the registry risk class returned on success. Names such as `GO_TO_SYMBOL` and `RUN_COMMAND` return `UNKNOWN_ACTION`.
     - _Requirements: 4.8, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7, 5.8_
 
-  - [ ]* 3.6 Write property test for action validation
+  - [x]* 3.6 Write property test for action validation
     - **Property 1: Only allow-listed, well-formed actions validate**
     - **Validates: Requirements 4.8, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7, 5.8**
 
-  - [ ] 3.7 Implement diagnostic navigation logic
+  - [x] 3.7 Implement diagnostic navigation logic
     - Implement `navigation/diagnosticNavigation.ts` as pure functions: resolve a 0-based `index` (from the 1-based user ordinal) against the candidate list filtered by severity and ordered with `compareForNavigation`; `next` and `previous` relative to the cursor, strictly after or before it, wrapping at the ends and saying so.
     - _Requirements: 4.4, 4.5_
 
-  - [ ]* 3.8 Write property test for next and previous navigation
+  - [x]* 3.8 Write property test for next and previous navigation
     - **Property 29: Next and previous diagnostics wrap and invert**
     - **Validates: Requirements 4.4**
 
-  - [ ]* 3.9 Write property test for ordinal diagnostic navigation
+  - [x]* 3.9 Write property test for ordinal diagnostic navigation
     - **Property 16: Diagnostic ordinal navigation follows path/line order**
     - **Validates: Requirements 4.4, 4.5**
 
-  - [ ] 3.10 Implement FileService
+  - [x] 3.10 Implement FileService
     - Implement `navigation/fileService.ts`: `resolve(nameOrPath)` returns not-found, exactly one match, or an ambiguity result listing up to 10 workspace-relative paths plus the total count. It never picks one of several matches.
     - _Requirements: 4.1, 4.2, 4.3_
 
