@@ -81,6 +81,34 @@ describe('extension manifest', () => {
     )).toBe(false);
   });
 
+  it('contributes the Milestone 3 commands with activation events', () => {
+    const expected = [
+      ['kirosight.describeErrors', 'KiroSight: Describe Errors'],
+      ['kirosight.nextError', 'KiroSight: Next Error'],
+      ['kirosight.previousError', 'KiroSight: Previous Error'],
+      ['kirosight.ask', 'KiroSight: Ask'],
+    ] as const;
+
+    for (const [command, title] of expected) {
+      expect(manifest.contributes?.commands).toContainEqual({ command, title });
+      expect(manifest.activationEvents).toContain(`onCommand:${command}`);
+    }
+  });
+
+  it('contributes the Milestone 3 commands with activation events', () => {
+    const expected = [
+      ['kirosight.describeErrors', 'KiroSight: Describe Errors'],
+      ['kirosight.nextError', 'KiroSight: Next Error'],
+      ['kirosight.previousError', 'KiroSight: Previous Error'],
+      ['kirosight.ask', 'KiroSight: Ask'],
+    ] as const;
+
+    for (const [command, title] of expected) {
+      expect(manifest.contributes?.commands).toContainEqual({ command, title });
+      expect(manifest.activationEvents).toContain(`onCommand:${command}`);
+    }
+  });
+
   it('matches the default keybinding to the recorded Spike A decision', () => {
     const activationBindings = (manifest.contributes?.keybindings ?? []).filter(
       (binding) => binding.command === 'kirosight.activate',

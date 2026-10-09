@@ -32,13 +32,23 @@ export const vscodeMockState = {
   outputChannels: [] as MockOutputChannel[],
   registeredCommands: new Map<string, CommandHandler>(),
   notifications: [] as string[],
+  inputBoxResponses: [] as Array<string | undefined>,
+  inputBoxCalls: [] as unknown[],
 };
 
 export function resetVscodeMock(): void {
   vscodeMockState.outputChannels.length = 0;
   vscodeMockState.registeredCommands.clear();
   vscodeMockState.notifications.length = 0;
+  vscodeMockState.inputBoxResponses.length = 0;
+  vscodeMockState.inputBoxCalls.length = 0;
 }
+
+export const languages = {
+  getDiagnostics(): never[] {
+    return [];
+  },
+};
 
 export const window = {
   createOutputChannel(name: string): MockOutputChannel {
@@ -64,6 +74,10 @@ export const window = {
   showInformationMessage(message: string): Promise<string> {
     vscodeMockState.notifications.push(message);
     return Promise.resolve(message);
+  },
+  showInputBox(options?: unknown): Promise<string | undefined> {
+    vscodeMockState.inputBoxCalls.push(options);
+    return Promise.resolve(vscodeMockState.inputBoxResponses.shift());
   },
 };
 

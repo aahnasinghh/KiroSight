@@ -72,6 +72,25 @@ function noDiagnosticsResult(diagnostics: DiagnosticInfo[]): DiagnosticsResult {
 export class DiagnosticsService {
   public constructor(private readonly adapter: EditorAdapter) {}
 
+  /**
+   * Workspace diagnostics in the same order as getDiagnostics('workspace'), plus an
+   * identity map from each returned DiagnosticInfo to its trusted internal fsPath.
+   * DiagnosticInfo itself stays free of absolute paths; the map is for navigation only.
+   */
+  public getWorkspaceNavigationTargets(): {
+    diagnostics: DiagnosticInfo[];
+    fsPaths: Map<DiagnosticInfo, string>;
+  } {
+    const entries = stableSort(
+      this.adapter.allDiagnostics().map((raw) => ({ info: mapDiagnostic(raw), fsPath: raw.fsPath })),
+      (left, right) => compareForReport(left.info, right.info),
+    );
+    return {
+      diagnostics: entries.map(({ info }) => info),
+      fsPaths: new Map(entries.map(({ info, fsPath }) => [info, fsPath])),
+    };
+  }
+
   public getDiagnostics(scope: DiagnosticScope): DiagnosticsResult {
     if (scope === 'current_file') {
       const snapshot = this.adapter.snapshot();

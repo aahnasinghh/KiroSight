@@ -14,7 +14,11 @@
   ],
   "activationEvents": [
     "onCommand:kirosight.activate",
-    "onCommand:kirosight.whereAmI"
+    "onCommand:kirosight.whereAmI",
+    "onCommand:kirosight.describeErrors",
+    "onCommand:kirosight.nextError",
+    "onCommand:kirosight.previousError",
+    "onCommand:kirosight.ask"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -29,6 +33,22 @@
       {
         "command": "kirosight.whereAmI",
         "title": "KiroSight: Where Am I"
+      },
+      {
+        "command": "kirosight.describeErrors",
+        "title": "KiroSight: Describe Errors"
+      },
+      {
+        "command": "kirosight.nextError",
+        "title": "KiroSight: Next Error"
+      },
+      {
+        "command": "kirosight.previousError",
+        "title": "KiroSight: Previous Error"
+      },
+      {
+        "command": "kirosight.ask",
+        "title": "KiroSight: Ask"
       }
     ],
     "keybindings": [

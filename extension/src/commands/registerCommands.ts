@@ -2,15 +2,27 @@ import * as vscode from 'vscode';
 
 export const ACTIVATE_COMMAND = 'kirosight.activate' as const;
 export const WHERE_AM_I_COMMAND = 'kirosight.whereAmI' as const;
+export const DESCRIBE_ERRORS_COMMAND = 'kirosight.describeErrors' as const;
+export const NEXT_ERROR_COMMAND = 'kirosight.nextError' as const;
+export const PREVIOUS_ERROR_COMMAND = 'kirosight.previousError' as const;
+export const ASK_COMMAND = 'kirosight.ask' as const;
 
 export interface CommandHandlers {
   readonly activate: () => void | Promise<void>;
   readonly whereAmI: () => void | Promise<void>;
+  readonly describeErrors: () => void | Promise<void>;
+  readonly nextError: () => void | Promise<void>;
+  readonly previousError: () => void | Promise<void>;
+  readonly ask: () => void | Promise<void>;
 }
 
 export function registerCommands(handlers: CommandHandlers): vscode.Disposable {
   return vscode.Disposable.from(
     vscode.commands.registerCommand(ACTIVATE_COMMAND, handlers.activate),
     vscode.commands.registerCommand(WHERE_AM_I_COMMAND, handlers.whereAmI),
+    vscode.commands.registerCommand(DESCRIBE_ERRORS_COMMAND, handlers.describeErrors),
+    vscode.commands.registerCommand(NEXT_ERROR_COMMAND, handlers.nextError),
+    vscode.commands.registerCommand(PREVIOUS_ERROR_COMMAND, handlers.previousError),
+    vscode.commands.registerCommand(ASK_COMMAND, handlers.ask),
   );
 }

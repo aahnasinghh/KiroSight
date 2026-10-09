@@ -126,7 +126,7 @@ Scope guardrails taken from the approved spec:
   - [x] 2.13 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: run `KiroSight: Where Am I` and read "You're editing src/login.ts at line 32, column 5, in function validateLogin." in the output channel, and check the no-file-open case.
 
-- [ ] 3. Milestone 3: Diagnostics and deterministic navigation
+- [x] 3. Milestone 3: Diagnostics and deterministic navigation
   - Extension-only. Diagnostics reporting, the allow-list registry, the validator and executor for the navigation actions, and the pure local intent router. There is no symbol navigation and no `RUN_COMMAND`.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7, 5.8_
 
@@ -172,49 +172,49 @@ Scope guardrails taken from the approved spec:
     - Implement `navigation/fileService.ts`: `resolve(nameOrPath)` returns not-found, exactly one match, or an ambiguity result listing up to 10 workspace-relative paths plus the total count. It never picks one of several matches.
     - _Requirements: 4.1, 4.2, 4.3_
 
-  - [ ]* 3.11 Write property test for file resolution
+  - [x]* 3.11 Write property test for file resolution
     - **Property 17: File resolution opens only unambiguous matches**
     - **Validates: Requirements 4.1, 4.2, 4.3**
 
-  - [ ] 3.12 Implement NavigationService
+  - [x] 3.12 Implement NavigationService
     - Implement `navigation/navigationService.ts`: reveal a file and position, open a file, focus the editor, and `goToLine` with pure bounds validation (an editor must be active and the line must be an integer from 1 to the last line). The cursor moves to the start of the line. Every failure leaves the cursor and active editor unchanged.
     - _Requirements: 4.4, 4.6, 4.7_
 
-  - [ ]* 3.13 Write property test for go-to-line validity
+  - [x]* 3.13 Write property test for go-to-line validity
     - **Property 18: Go-to-line validity**
     - **Validates: Requirements 4.6, 4.7**
 
-  - [ ] 3.14 Implement ActionExecutor and ActionResult
+  - [x] 3.14 Implement ActionExecutor and ActionResult
     - Implement `actions/actionResult.ts` (the `ActionResult` type) and `actions/actionExecutor.ts` with a compiler-enforced handler map, one named handler per action: `NO_ACTION`, `GO_TO_DIAGNOSTIC`, `NEXT_DIAGNOSTIC`, `PREVIOUS_DIAGNOSTIC`, `OPEN_FILE`, `GO_TO_LINE` and `FOCUS_EDITOR`. No code path passes a string to `vscode.commands.executeCommand`.
     - The `RUN_TESTS` handler is a placeholder returning a `failed` result ("test running is not available yet") and is replaced by the real handler in task 5.14.
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8_
 
-  - [ ] 3.15 Implement ResponseFormatter for action results
+  - [x] 3.15 Implement ResponseFormatter for action results
     - Implement `response/responseFormatter.ts` with `formatActionResult`: concrete outcomes for success (opened path, reached file and line, severity and message) and the specific reason for failures, clarification requests and declines.
     - _Requirements: 16.5, 16.6_
 
-  - [ ]* 3.16 Write property test for concrete action results
+  - [x]* 3.16 Write property test for concrete action results
     - **Property 21: Action results state a concrete outcome or reason**
     - **Validates: Requirements 16.5, 16.6**
 
-  - [ ] 3.17 Implement the LocalIntentRouter
+  - [x] 3.17 Implement the LocalIntentRouter
     - Implement `intent/normalize.ts`, `intent/intentTypes.ts` and `intent/localIntentRouter.ts`: a pure, synchronous `route(utterance)` with normalization (case, punctuation, whitespace, filler words, number words), an anchored rule table and the exactly-one-match rule. Rules: where am I, current function, read selection, errors in the workspace or file, next and previous error, go to the first, second, third error, go to line N, open NAME, focus editor, run tests, summarize test failures and help.
     - Semantic phrases and anything unmatched or ambiguous route to the agent. There is no symbol-navigation rule, so "go to function foo" routes to the agent as `unrecognized`. Every produced action must pass `validateAction`.
     - _Requirements: 1.1, 4.4, 4.6, 7.1, 8.2_
 
-  - [ ]* 3.18 Write property test for the local router
+  - [x]* 3.18 Write property test for the local router
     - **Property 10: Local router is deterministic and conservative**
     - **Validates: Requirements 1.1, 4.4, 4.6, 7.1, 8.2**
 
-  - [ ] 3.19 Implement the local intent handler
+  - [x] 3.19 Implement the local intent handler
     - Implement `pipeline/localIntentHandler.ts`: run a `LocalIntent` by calling `ContextService`, `DiagnosticsService`, `validateAction` and `ActionExecutor`, then format the result with `ContextFormatter` and `ResponseFormatter`. Returns display text. Agent-routed results return a "reasoning is not connected yet" message (replaced in Milestone 6).
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 4.1, 4.4, 4.6, 16.5, 16.6_
 
-  - [ ] 3.20 Wire the Milestone 3 commands
+  - [x] 3.20 Wire the Milestone 3 commands
     - Register `kirosight.describeErrors`, `kirosight.nextError`, `kirosight.previousError`, and `kirosight.ask` (an input-box command that sends typed text through the router and the local handler to the sink). Construct all services in `extension.ts`. The webview replaces the input box in Milestone 4.
     - _Requirements: 2.1, 2.2, 4.4, 8.2_
 
-  - [ ] 3.21 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 3.21 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: use `KiroSight: Ask` to run "what errors are there", "go to the first error", "open auth.ts" and "go to line 40", and read the concrete text result of each.
 
 - [ ] 4. Milestone 4: Accessible webview and typed command pipeline
