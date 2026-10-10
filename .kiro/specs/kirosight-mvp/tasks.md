@@ -221,58 +221,58 @@ Scope guardrails taken from the approved spec:
   - Extension-only. One `InputPipeline` for all text input, an append-only transcript, a plain HTML/CSS/JS webview panel, and a closed, validated bridge between the webview and the extension host. Confirm and Decline controls are rendered but stay hidden until Milestone 5 supplies a pending confirmation.
   - _Requirements: 8.1, 8.3, 8.4, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 15.1, 15.2, 15.4, 19.1, 19.3, 19.4, 19.10_
 
-  - [ ] 4.1 Implement TranscriptStore
+  - [x] 4.1 Implement TranscriptStore
     - Implement `transcript/transcriptStore.ts`: append-only entries with strictly increasing `seq`, roles (`user`, `kirosight`, `system`) and an optional `source` (`typed` or `voice`). Earlier entries are never changed.
     - _Requirements: 15.1, 15.2_
 
-  - [ ]* 4.2 Write property test for the transcript
+  - [x]* 4.2 Write property test for the transcript
     - **Property 24: Transcript is append-only and ordered**
     - **Validates: Requirements 15.1, 15.2**
 
-  - [ ] 4.3 Implement the view model
+  - [x] 4.3 Implement the view model
     - Implement `webview/viewModel.ts`: status kinds (idle, listening, processing, speaking, error, confirmation pending, voice unavailable) each with a non-empty text label, the voice state and reason text, the pending-confirmation field (empty for now), the latest response and the transcript.
     - The view model never carries the input draft and never contains credentials or tokens.
     - _Requirements: 10.3, 14.3, 15.4_
 
-  - [ ]* 4.4 Write property test for status labels
+  - [x]* 4.4 Write property test for status labels
     - **Property 25: Every state has a text label**
     - **Validates: Requirements 10.3, 14.3**
 
-  - [ ] 4.5 Implement the webview bridge messages and validators
-    - Implement `protocol/bridgeMessages.ts` with zod validators for the closed webview-to-host set (`ready`, `submit_text`, `ptt_toggle`, `audio_clip`, `mic_state`, `confirm`, `decline`, `interrupt`, `playback`) and the host-to-webview set (`view_state`, `submit_ack`, `backend_unavailable`, `transcript_append`, `start_capture`, `stop_capture`, `play_audio`, `stop_audio`). No host-to-webview message type may carry a credential or token field. Only message definitions and validators are built here. The voice and playback messages are used in Milestones 8 and 9.
+  - [x] 4.5 Implement the webview bridge messages and validators
+    - Implement `protocol/bridgeMessages.ts` with zod validators for the closed webview-to-host set (`ready`, `submit_text`, `ptt_toggle`, `audio_clip`, `mic_state`, `confirm`, `decline`, `interrupt`, `playback`) and the host-to-webview set (`view_state`, `submit_ack`, `backend_unavailable`, `transcript_append`, `start_capture`, `stop_capture`, `play_audio`, `stop_audio`, `focus_input`). No host-to-webview message type may carry a credential or token field. Only message definitions and validators are built here. The voice and playback messages are used in Milestones 8 and 9.
     - _Requirements: 19.1, 19.3, 19.4, 19.10_
 
-  - [ ] 4.6 Implement the InputPipeline
+  - [x] 4.6 Implement the InputPipeline
     - Implement `pipeline/inputPipeline.ts` and `pipeline/requestTracker.ts`. `handle(text, source)` discards empty or whitespace-only text (no transcript entry, nothing routed), appends the user entry, routes with `LocalIntentRouter`, runs local intents through the local intent handler, and for agent routes calls an injectable `AgentGateway` interface (a stub reporting that reasoning is not connected until Milestone 6). It appends the response, updates status and returns a `submit_ack` status (`handled`, `not_handled` or `discarded`). `source` affects only presentation, never routing.
     - Expose an injectable interceptor hook for pending-confirmation replies (unused until Milestone 5) and the `confirm()`, `decline()` and `interrupt()` entry points.
     - _Requirements: 8.1, 8.2, 8.4, 15.1, 15.2_
 
-  - [ ]* 4.7 Write property test for whitespace-only input
+  - [x]* 4.7 Write property test for whitespace-only input
     - **Property 12: Whitespace-only input is discarded**
     - **Validates: Requirements 8.4**
 
-  - [ ] 4.8 Implement the webview HTML and styles
+  - [x] 4.8 Implement the webview HTML and styles
     - Implement `webview/html.ts` (per-load nonce and CSP `default-src 'none'; style-src ${cspSource}; script-src 'nonce-...'; media-src blob: data:` with no `connect-src`) and `media/styles.css`. The markup follows the design: heading, status (`role="status"`), transcript (`role="log"`, one live announcer), a static latest-response block, a hidden confirmation section with Confirm and Decline buttons, a command form with Send, and the push-to-talk button with `aria-pressed`, `aria-disabled` and a visible note. DOM order equals visual order equals Tab order.
     - Focus indicator: a 3 px outline using the theme focus color with a fallback. State is never conveyed by color alone.
     - _Requirements: 6.2, 8.3, 10.3, 14.1, 14.2, 14.3, 14.4, 14.5, 15.4, 19.3, 19.4_
 
-  - [ ] 4.9 Implement the webview script
+  - [x] 4.9 Implement the webview script
     - Implement `media/main.js` (plain JavaScript, thin DOM wiring only): post `ready` and `submit_text` through `postMessage`; render `view_state`; clear the input only on `submit_ack` with status `handled`; show `backend_unavailable` text while keeping the draft; keep the push-to-talk button focusable with `aria-disabled="true"` and reason text when voice is unavailable; handle Enter and Space on buttons and Escape for `interrupt`; never capture arrow keys or screen reader shortcuts. The input accepts at least 1,000 characters.
     - _Requirements: 8.3, 10.1, 10.3, 14.1, 14.5, 14.6, 19.3, 19.9_
 
-  - [ ] 4.10 Implement the webview provider
+  - [x] 4.10 Implement the webview provider
     - Implement `webview/webviewProvider.ts` (`retainContextWhenHidden`). Validate every incoming message with the bridge validators and discard any message whose `type` is not in the defined set without acting on it or relaying it. Re-send the full view model on `ready`. Route `submit_text` to the `InputPipeline` and reply with `submit_ack`. Forward `confirm`, `decline` and `interrupt` to the pipeline. Make `kirosight.activate` open or focus the panel, place focus in the command input, and record in the transcript that voice is unavailable until Milestone 8.
     - _Requirements: 9.7, 18.1, 18.4, 18.5, 19.3, 19.10_
 
-  - [ ]* 4.11 Write property test for credential-free host messages
+  - [x]* 4.11 Write property test for credential-free host messages
     - **Property 30: Host-to-webview messages carry no credentials**
     - **Validates: Requirements 19.4, 19.8**
 
-  - [ ]* 4.12 Write property test for unknown webview messages
+  - [x]* 4.12 Write property test for unknown webview messages
     - **Property 31: Unknown webview messages are discarded**
     - **Validates: Requirements 19.10**
 
-  - [ ]* 4.13 Write webview structure tests
+  - [x]* 4.13 Write webview structure tests
     - Add jsdom (exact pinned version) and test: DOM order equals the expected Tab order, landmarks and labels exist, exactly one live announcer for transcript entries, the CSP string has no `connect-src`, no credential patterns appear in `media/` or the generated HTML, the input draft is kept until `submit_ack` is `handled`, and the push-to-talk control stays in the Tab order with `aria-disabled` and no `disabled` attribute.
     - _Requirements: 8.3, 10.3, 14.1, 14.3, 14.4, 15.4, 19.3, 19.4_
 

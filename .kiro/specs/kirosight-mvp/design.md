@@ -802,6 +802,7 @@ There is no `connect-src`, `img-src` or `frame-src`, so the webview cannot make 
 | host to webview | `start_capture` / `stop_capture` | none |
 | host to webview | `play_audio` | `id`, `mimeType`, `base64` |
 | host to webview | `stop_audio` | none |
+| host to webview | `focus_input` | none. Sent only when `kirosight.activate` re-activates an already-open panel; the webview moves DOM focus to the command input and does nothing else (no draft change, no reply). A newly created panel focuses the input once when its script loads. |
 
 The webview-to-host set above is closed. The host discards any webview message whose `type` is not in it, or whose fields fail the bridge validator, without relaying it to the backend and without acting on it (Req 19.10). No host-to-webview message carries a Deepgram or Bedrock credential, an auth token or any other secret (Req 19.4).
 

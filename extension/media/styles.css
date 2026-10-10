@@ -1,0 +1,138 @@
+/* KiroSight panel styles. Theme variables only; no hard-coded light/dark palette. */
+
+body {
+  margin: 0;
+  padding: 12px;
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 1.4em;
+}
+
+h2 {
+  font-size: 1.1em;
+}
+
+p {
+  margin: 0;
+}
+
+section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Honor the hidden attribute even though section sets display. */
+[hidden] {
+  display: none !important;
+}
+
+#status {
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-panel-border, currentColor);
+  font-weight: 600;
+}
+
+#transcript {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--vscode-panel-border, currentColor);
+  white-space: pre-wrap;
+}
+
+#latest {
+  padding: 4px 0;
+}
+
+form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+label {
+  flex-basis: 100%;
+  font-weight: 600;
+}
+
+input[type='text'] {
+  flex: 1 1 10em;
+  min-width: 0;
+  padding: 4px 8px;
+  color: var(--vscode-input-foreground);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, currentColor);
+  font: inherit;
+}
+
+button {
+  padding: 4px 12px;
+  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-background);
+  border: 1px solid var(--vscode-button-border, currentColor);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}
+
+/* Unavailable state: a dashed border and the note text carry the meaning, not color. */
+button[aria-disabled='true'] {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+
+#ptt-note {
+  padding-left: 8px;
+  border-left: 3px solid currentColor;
+}
+
+/* Focus indicator: 3px outline, theme focus color with a fixed fallback. */
+:focus,
+:focus-visible {
+  outline: 3px solid var(--vscode-focusBorder, #0078d4);
+  outline-offset: 2px;
+}
+
+input[type='text']:focus {
+  /* Thicker border as an extra non-color shape cue. */
+  border-width: 2px;
+}
+
+@media (forced-colors: active) {
+  :focus,
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  button {
+    border: 1px solid ButtonText;
+  }
+
+  button[aria-disabled='true'] {
+    border-style: dashed;
+  }
+}
