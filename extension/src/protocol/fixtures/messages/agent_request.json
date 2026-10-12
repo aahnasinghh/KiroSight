@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "type": "agent_request",
+  "id": "req-1",
+  "kind": "utterance",
+  "utterance": {
+    "text": "explain this error",
+    "source": "typed"
+  },
+  "context": {
+    "workspace": { "name": "sample", "rootCount": 1 },
+    "relativePath": "src/example.ts",
+    "languageId": "typescript",
+    "cursor": { "line": 3, "column": 1 },
+    "selection": {
+      "isEmpty": false,
+      "start": { "line": 3, "column": 1 },
+      "end": { "line": 3, "column": 8 }
+    },
+    "nearbyCode": {
+      "source": "cursor_window",
+      "startLine": 2,
+      "endLine": 4,
+      "text": "return value;",
+      "truncated": false
+    },
+    "currentSymbol": {
+      "name": "example",
+      "kind": "Function",
+      "startLine": 1,
+      "endLine": 5
+    },
+    "symbolStatus": "found",
+    "diagnostics": [
+      {
+        "severity": "error",
+        "relativePath": "src/example.ts",
+        "line": 3,
+        "column": 1,
+        "message": "Sample diagnostic message.",
+        "source": "sample",
+        "code": "E001",
+        "symbolName": "example"
+      }
+    ],
+    "diagnosticCounts": {
+      "error": 1,
+      "warning": 0,
+      "information": 0,
+      "hint": 0
+    }
+  }
+}

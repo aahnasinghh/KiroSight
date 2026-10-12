@@ -112,12 +112,38 @@ export const workspaceMockState = {
   files: [] as string[],
   findFilesCalls: [] as Array<{ include: unknown; exclude: unknown }>,
   configuration: new Map<string, unknown>(),
+  globalConfiguration: new Map<string, unknown>(),
+  workspaceConfiguration: new Map<string, unknown>(),
+  workspaceFolderConfiguration: new Map<string, unknown>(),
 };
 
 export function setMockConfiguration(values: Record<string, unknown>): void {
   workspaceMockState.configuration.clear();
+  workspaceMockState.globalConfiguration.clear();
   for (const [key, value] of Object.entries(values)) {
     workspaceMockState.configuration.set(key, value);
+    workspaceMockState.globalConfiguration.set(key, value);
+  }
+}
+
+export function setMockScopedConfiguration(options: {
+  readonly global?: Record<string, unknown>;
+  readonly workspace?: Record<string, unknown>;
+  readonly workspaceFolder?: Record<string, unknown>;
+}): void {
+  workspaceMockState.configuration.clear();
+  workspaceMockState.globalConfiguration.clear();
+  workspaceMockState.workspaceConfiguration.clear();
+  workspaceMockState.workspaceFolderConfiguration.clear();
+  for (const [key, value] of Object.entries(options.global ?? {})) {
+    workspaceMockState.configuration.set(key, value);
+    workspaceMockState.globalConfiguration.set(key, value);
+  }
+  for (const [key, value] of Object.entries(options.workspace ?? {})) {
+    workspaceMockState.workspaceConfiguration.set(key, value);
+  }
+  for (const [key, value] of Object.entries(options.workspaceFolder ?? {})) {
+    workspaceMockState.workspaceFolderConfiguration.set(key, value);
   }
 }
 
@@ -130,6 +156,9 @@ export function setMockWorkspace(folderPaths: string[] | undefined, files: strin
   workspaceMockState.files = files;
   workspaceMockState.findFilesCalls.length = 0;
   workspaceMockState.configuration.clear();
+  workspaceMockState.globalConfiguration.clear();
+  workspaceMockState.workspaceConfiguration.clear();
+  workspaceMockState.workspaceFolderConfiguration.clear();
 }
 
 export class Position {
@@ -235,13 +264,32 @@ function registerListener<T>(list: T[], listener: T): DisposableLike {
 }
 
 export const workspace = {
-  getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined } {
+  getConfiguration(section?: string): {
+    get<T>(key: string, defaultValue?: T): T | undefined;
+    inspect<T>(key: string): {
+      key: string;
+      defaultValue?: T;
+      globalValue?: T;
+      workspaceValue?: T;
+      workspaceFolderValue?: T;
+    } | undefined;
+  } {
     return {
       get<T>(key: string, defaultValue?: T): T | undefined {
         const fullKey = section === undefined ? key : `${section}.${key}`;
         return (workspaceMockState.configuration.has(fullKey)
           ? workspaceMockState.configuration.get(fullKey)
           : defaultValue) as T | undefined;
+      },
+      inspect<T>(key: string) {
+        const fullKey = section === undefined ? key : `${section}.${key}`;
+        const globalValue = workspaceMockState.globalConfiguration.get(fullKey) as T | undefined;
+        const workspaceValue = workspaceMockState.workspaceConfiguration.get(fullKey) as T | undefined;
+        const workspaceFolderValue = workspaceMockState.workspaceFolderConfiguration.get(fullKey) as T | undefined;
+        if (globalValue === undefined && workspaceValue === undefined && workspaceFolderValue === undefined) {
+          return undefined;
+        }
+        return { key: fullKey, globalValue, workspaceValue, workspaceFolderValue };
       },
     };
   },

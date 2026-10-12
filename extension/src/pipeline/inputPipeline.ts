@@ -22,15 +22,51 @@ export interface LocalIntentRunner {
   handleIntent(intent: LocalIntent): Promise<string>;
 }
 
+/**
+ * Shown, in the transcript and in the webview status, when agent-routed text cannot be relayed
+ * because the backend connection is not open (design.md F1; Req 19.9). It names only features
+ * that really are local: context, diagnostics, navigation and trusted test runs.
+ */
+export const BACKEND_UNAVAILABLE_TEXT =
+  "I can't reach the KiroSight backend, so I can't explain that. "
+  + 'Local commands like where am I, errors, go to line and run tests still work.';
+
 export interface AgentGatewayResult {
-  /** 'handled' once the request was accepted; 'not_handled' leaves the typed text in the input. */
+  /**
+   * 'handled' once the request has been answered; 'not_handled' leaves the typed text in the
+   * input so it can be resubmitted.
+   */
   readonly status: 'handled' | 'not_handled';
   readonly text: string;
+  /** True when the backend could not be reached, so the webview is also sent backend_unavailable. */
+  readonly unavailable?: boolean;
 }
 
-/** The agent seam. The real backend replaces the Milestone 4 stub in Milestone 6. */
+/** What the pipeline already knows about one agent-routed submission. */
+export interface AgentRelayInfo {
+  /** The RequestTracker id of this submission; unique and increasing in arrival order. */
+  readonly requestId: number;
+  readonly source: TranscriptSource;
+}
+
+/**
+ * The agent seam. `respond` is called at most once per agent-routed submission, and only after
+ * the local router and the confirmation interceptor declined the text. Calls are made in arrival
+ * order. The gateway never receives locally handled text.
+ */
 export interface AgentGateway {
-  respond(text: string): Promise<AgentGatewayResult>;
+  respond(text: string, info?: AgentRelayInfo): Promise<AgentGatewayResult>;
+  /**
+   * Whether a request can be relayed right now. When this returns false the pipeline does not call
+   * `respond` at all. A gateway without this method is treated as available.
+   */
+  isAvailable?(): boolean;
+}
+
+/** The webview notice sent when agent-routed text cannot be relayed (host to webview bridge). */
+export interface BackendUnavailableNotice {
+  readonly kind: 'text';
+  readonly message: string;
 }
 
 export const reasoningNotConnectedGateway: AgentGateway = {
@@ -73,6 +109,14 @@ export interface InputPipelineDeps {
   readonly tracker?: RequestTracker;
   /** Receives a fresh immutable ViewModel whenever status, latest or transcript change. */
   readonly onViewModel?: (model: ViewModel) => void;
+  /** Called immediately (never after a delay) when agent-routed text cannot be relayed. */
+  readonly onBackendUnavailable?: (notice: BackendUnavailableNotice) => void;
+}
+
+interface ArrivalTicket {
+  /** Settles once every earlier ticket has been released. */
+  readonly previous: Promise<void>;
+  readonly release: () => void;
 }
 
 export class InputPipeline {
@@ -81,6 +125,8 @@ export class InputPipeline {
   private readonly route: (text: string) => RouteResult;
   private readonly tracker: RequestTracker;
   private latest: string | null = null;
+  /** Tail of the arrival line: each submission waits only for the ones that arrived before it. */
+  private arrivalTail: Promise<void> = Promise.resolve();
 
   public constructor(private readonly deps: InputPipelineDeps) {
     this.agent = deps.agent ?? reasoningNotConnectedGateway;
@@ -98,9 +144,15 @@ export class InputPipeline {
     this.deps.transcript.append('user', text, source);
     this.publish('processing');
 
+    // Take a place in the arrival line before any await, so agent relay order is the order in
+    // which submissions reached the pipeline. While a confirmation is pending every input is
+    // claimed by it and can never be relayed, so it must not queue behind (or hold up) others.
+    const ticket = this.deps.confirmation?.isPending() === true ? undefined : this.takeTicket();
+
     try {
       const intercepted = await this.interceptor.intercept(text);
       if (intercepted.intercepted) {
+        ticket?.release();
         if (intercepted.response !== undefined) {
           this.respond(intercepted.response);
         }
@@ -108,27 +160,73 @@ export class InputPipeline {
         return 'handled';
       }
 
+      // The single routing decision. Only an 'agent' route can ever reach the gateway.
       const routed = this.route(text);
       if (routed.route === 'local') {
+        ticket?.release();
         const response = await this.deps.localIntents.handleIntent(routed.intent);
         this.respond(response);
         this.publish(this.restingStatus());
         return 'handled';
       }
 
-      const requestId = this.tracker.begin();
-      const result = await this.agent.respond(text);
-      if (!this.tracker.isCurrent(requestId)) {
-        return 'handled';
-      }
-      this.respond(result.text);
-      this.publish(result.status === 'handled' ? 'idle' : 'error');
-      return result.status;
+      return await this.relayToAgent(text, source, ticket);
     } catch {
       this.respond(PIPELINE_FAILURE_TEXT);
       this.publish('error');
       return 'not_handled';
+    } finally {
+      ticket?.release();
     }
+  }
+
+  /**
+   * Relays one agent-routed submission. Nothing is sent when the gateway reports it is
+   * unavailable, nothing is queued for later, and no connection is attempted from here.
+   */
+  private async relayToAgent(
+    text: string,
+    source: TranscriptSource,
+    ticket: ArrivalTicket | undefined,
+  ): Promise<SubmitAckStatus> {
+    if (ticket !== undefined) await ticket.previous;
+
+    if (this.agent.isAvailable?.() === false) {
+      ticket?.release();
+      this.reportUnavailable(BACKEND_UNAVAILABLE_TEXT);
+      return 'not_handled';
+    }
+
+    const requestId = this.tracker.begin();
+    // respond() is invoked synchronously here, so the gateway sees calls in arrival order. The
+    // line is released as soon as the request has been handed over, not when it is answered.
+    const pending = this.agent.respond(text, { requestId, source });
+    ticket?.release();
+
+    const result = await pending;
+    if (!this.tracker.isCurrent(requestId)) {
+      return 'handled';
+    }
+    if (result.unavailable === true) {
+      this.reportUnavailable(result.text);
+      return 'not_handled';
+    }
+    this.respond(result.text);
+    this.publish(result.status === 'handled' ? 'idle' : 'error');
+    return result.status;
+  }
+
+  private reportUnavailable(message: string): void {
+    this.deps.onBackendUnavailable?.({ kind: 'text', message });
+    this.respond(message);
+    this.publish('error');
+  }
+
+  private takeTicket(): ArrivalTicket {
+    const previous = this.arrivalTail;
+    let release: () => void = () => undefined;
+    this.arrivalTail = new Promise<void>((resolve) => { release = resolve; });
+    return { previous, release };
   }
 
   /** Confirm control: the same transition as a typed CONFIRM. A safe no-op with nothing pending. */

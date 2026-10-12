@@ -67,6 +67,16 @@ export class WebviewProvider implements vscode.Disposable {
     }
   }
 
+  /**
+   * Tells an open panel that text or audio could not be relayed to the backend. The draft is
+   * never touched: the webview only shows the message, and the submit_ack decides about the input.
+   */
+  public notifyBackendUnavailable(kind: 'text' | 'audio', message: string): void {
+    if (this.panel) {
+      this.post(this.panel.webview, { type: 'backend_unavailable', kind, message });
+    }
+  }
+
   public dispose(): void {
     this.panel?.dispose();
   }

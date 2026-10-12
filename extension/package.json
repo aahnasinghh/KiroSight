@@ -20,7 +20,8 @@
     "onCommand:kirosight.previousError",
     "onCommand:kirosight.ask",
     "onCommand:kirosight.runTests",
-    "onCommand:kirosight.showTestOutput"
+    "onCommand:kirosight.showTestOutput",
+    "onCommand:kirosight.startBackend"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -41,6 +42,12 @@
           "default": 300,
           "minimum": 1,
           "description": "Maximum duration for a trusted test run, in seconds."
+        },
+        "kirosight.backendCommand": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Optional trusted user command used to start the local KiroSight backend."
         }
       }
     },
@@ -76,6 +83,10 @@
       {
         "command": "kirosight.showTestOutput",
         "title": "KiroSight: Show Test Output"
+      },
+      {
+        "command": "kirosight.startBackend",
+        "title": "KiroSight: Start Backend"
       }
     ],
     "keybindings": [

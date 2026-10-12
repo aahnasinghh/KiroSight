@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "type": "action_request",
+  "id": "act-1",
+  "action": { "type": "GO_TO_LINE", "line": 3 },
+  "reason": "Show the line with the error."
+}

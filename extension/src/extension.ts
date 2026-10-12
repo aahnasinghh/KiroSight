@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { BackendLauncher } from './backend/backendLauncher';
 import { ActionExecutor } from './actions/actionExecutor';
 import { registerCommands } from './commands/registerCommands';
 import { ActionGate } from './confirmation/actionGate';
@@ -40,6 +41,7 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
   // One shared instance of each stateful Milestone 5 object.
   const testRunStore = new TestRunStore();
   const testRunner = overrides.testRunner ?? new TestRunner();
+  const backendLauncher = new BackendLauncher();
   const actionExecutor = new ActionExecutor({
     adapter: editorAdapter,
     diagnostics: diagnosticsService,
@@ -116,6 +118,10 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
       await inputPipeline.handle(RUN_TESTS_UTTERANCE, 'typed');
     },
     showTestOutput: () => testRunner.showOutput(),
+    startBackend: () => {
+      const result = backendLauncher.start();
+      void vscode.window.showInformationMessage(result.message);
+    },
   });
 
   context.subscriptions.push(commandRegistrations, panel, editorAdapter, testRunner);

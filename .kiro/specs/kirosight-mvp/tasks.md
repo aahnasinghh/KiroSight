@@ -363,63 +363,63 @@ Scope guardrails taken from the approved spec:
   - Introduce the local FastAPI backend, the versioned protocol on both sides with shared fixtures, the WebSocket client in the extension host, and the local-first relay. The backend's agent is a canned stub. Local commands keep working with the backend off.
   - _Requirements: 5.1, 11.1, 11.2, 11.3, 11.4, 17.1, 17.5, 17.6, 19.2, 19.5, 19.9_
 
-  - [ ] 6.1 Scaffold the backend
+  - [x] 6.1 Scaffold the backend
     - Create `backend/` with `app/` (`main.py`, `config.py`, `session.py`, `allowlist.py`, `logging_utils.py`, and `protocol/`, `agent/`, `speech/` packages), `tests/`, `requirements.txt` with exactly pinned versions (`fastapi`, `uvicorn[standard]`, `pydantic>=2` pinned, `httpx`, `python-dotenv`, `pytest`, `pytest-asyncio`, `hypothesis`), pytest configuration, and a backend `.env.example` aligned with the root one.
     - _Requirements: 17.1, 17.3, 17.4_
 
-  - [ ] 6.2 Implement configuration and loopback enforcement
+  - [x] 6.2 Implement configuration and loopback enforcement
     - Implement `config.py`: load the environment (python-dotenv), resolve `KIROSIGHT_HOST` (default `127.0.0.1`) and `KIROSIGHT_PORT`, refuse any non-loopback host with a configuration error, and report which credentials are missing by name without logging values.
     - _Requirements: 11.4, 17.1, 17.5_
 
-  - [ ]* 6.3 Write property test for loopback-only binding
+  - [x]* 6.3 Write property test for loopback-only binding
     - **Property 9: Backend binds only to loopback**
     - **Validates: Requirements 11.4**
 
-  - [ ] 6.4 Implement log redaction
+  - [x] 6.4 Implement log redaction
     - Implement `logging_utils.py`: `redact()` and a logging filter that removes secret values. Log metadata only (type, id, sizes), never audio, code or credentials.
     - _Requirements: 17.6_
 
-  - [ ]* 6.5 Write property test for redaction
+  - [x]* 6.5 Write property test for redaction
     - **Property 27: Redaction removes secrets**
     - **Validates: Requirements 17.6**
 
-  - [ ] 6.6 Implement the backend allow-list registry
+  - [x] 6.6 Implement the backend allow-list registry
     - Implement `allowlist.py`: `ALLOWED_ACTIONS: dict[str, ActionSpec]` with exactly the eight MVP actions, each with its risk class (`RUN_TESTS` is `needs-confirmation`) and strict parameter models with `extra="forbid"`. There is no `RUN_COMMAND` and no `GO_TO_SYMBOL`.
     - _Requirements: 5.1, 5.6, 5.8_
 
-  - [ ]* 6.7 Write allow-list parity tests
+  - [x]* 6.7 Write allow-list parity tests
     - A pytest test checks `allowlist.py` against the shared fixture `protocol/fixtures/allowlist.json`, and a Vitest test checks `actions/allowlist.ts` against the same fixture. Both assert the registry has exactly the eight MVP actions and the same risk classes (the automated parity check).
     - _Requirements: 5.1, 5.8_
 
-  - [ ] 6.8 Implement the TypeScript protocol types and validators
+  - [x] 6.8 Implement the TypeScript protocol types and validators
     - Implement `protocol/messages.ts`, `protocol/constants.ts` (`PROTOCOL_VERSION = 1`) and `protocol/validators.ts` (zod). Define every message in the design with `version` and `type` on each: `hello`, `hello_ack`, `agent_request`, `agent_response`, `action_request`, `action_result`, `record_start`, `record_stop`, `audio_clip`, `transcription_result`, `speech_request`, `speech_audio`, `cancel` and `error_message`, the `ErrorCode` set, and the `IDEContext` payload. `agent_response.action` is validated on the envelope only as an object with a string `type`; strict checking stays in `ActionValidator`. Validation never throws.
     - _Requirements: 11.1, 11.2, 11.3_
 
-  - [ ] 6.9 Implement the Python protocol models, validators, fixtures and protocol document
+  - [x] 6.9 Implement the Python protocol models, validators, fixtures and protocol document
     - Implement `protocol/messages.py` (Pydantic v2, `extra="forbid"`, discriminated union on `type`) and `protocol/validators.py` (`parse_message(raw)` returns a message or a protocol error and never raises). Commit sample messages per type as shared fixtures in `protocol/fixtures/`, validated by both languages. Write `docs/protocol.md` documenting every message, its fields and the error codes.
     - _Requirements: 11.1, 11.2, 11.3_
 
-  - [ ]* 6.10 Write property test for protocol round trips
+  - [x]* 6.10 Write property test for protocol round trips
     - **Property 7: Protocol messages round-trip**
     - **Validates: Requirements 11.1, 11.2**
 
-  - [ ]* 6.11 Write property test for invalid protocol messages
+  - [x]* 6.11 Write property test for invalid protocol messages
     - **Property 8: Invalid protocol messages are rejected without dispatch**
     - **Validates: Requirements 11.3**
 
-  - [ ] 6.12 Implement the FastAPI app, session and stub agent
+  - [x] 6.12 Implement the FastAPI app, session and stub agent
     - Implement `main.py` (`GET /health`, `WebSocket /ws`, `ws_max_size` of 2 MB, rejection of any connection carrying an `Origin` header, optional shared-token check in `hello`), `session.py` (history of the last 6 turns, in-flight task registry for `cancel`, capability snapshot), the `hello`/`hello_ack` handshake with capabilities (`bedrock`, `stt`, `tts` false for now; `mic` `not_applicable`), validation failures answered with an `error_message` that never echoes the payload while the connection stays open, and a stub agent returning a canned `agent_response` with `NO_ACTION`.
     - _Requirements: 11.3, 11.4, 17.5_
 
-  - [ ]* 6.13 Write WebSocket integration tests
+  - [x]* 6.13 Write WebSocket integration tests
     - With the FastAPI `TestClient`: handshake and capabilities, rejection of a connection with an `Origin` header, the token check, an invalid message keeps the connection open, `cancel` stops a running task, the stub agent round trip.
     - _Requirements: 11.3, 11.4_
 
-  - [ ] 6.14 Implement BackendClient and ConnectionManager
+  - [x] 6.14 Implement BackendClient and ConnectionManager
     - Implement `backend/backendClient.ts` and `backend/connectionManager.ts` with an injectable WebSocket factory: lazy connect, the `hello` handshake, states `disconnected`, `connecting`, `connected` and `incompatible`, bounded exponential backoff (1, 2, 4 s, capped at 15 s) while the panel is open, request timeouts (agent 25 s), `cancel`, `onEvent`, failure of in-flight requests on disconnect, validation of every incoming message with the protocol validators, and acceptance of `kirosight.backendUrl` only when its host is loopback. The host process owns this connection; the webview never does.
     - _Requirements: 10.3, 11.1, 11.2, 11.3, 19.2_
 
-  - [ ] 6.15 Implement the optional backend launcher
+  - [x] 6.15 Implement the optional backend launcher
     - Implement `backend/backendLauncher.ts` and register `kirosight.startBackend`, which spawns the command from the user-scoped `kirosight.backendCommand` setting. A documented manual start remains the default and nothing in Milestones 1 to 5 depends on this.
     - _Requirements: 19.2_
 

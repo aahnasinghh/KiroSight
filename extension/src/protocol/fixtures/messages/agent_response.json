@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "type": "agent_response",
+  "replyTo": "req-1",
+  "speech": "There is one error on line 3 in example.ts.",
+  "action": { "type": "GO_TO_DIAGNOSTIC", "index": 0 },
+  "confirmationRequired": false
+}

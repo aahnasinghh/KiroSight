@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "type": "speech_audio",
+  "replyTo": "speech-1",
+  "mimeType": "audio/mpeg",
+  "base64": "AAEC"
+}

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "type": "action_result",
+  "replyTo": "req-1",
+  "result": {
+    "actionType": "GO_TO_DIAGNOSTIC",
+    "status": "ok",
+    "message": "Moved to the error on line 3 in src/example.ts.",
+    "details": {
+      "kind": "diagnostic_reached",
+      "relativePath": "src/example.ts",
+      "line": 3,
+      "severity": "error",
+      "message": "Sample diagnostic message.",
+      "symbol": "example",
+      "wrapped": false
+    }
+  }
+}

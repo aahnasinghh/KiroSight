@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "type": "error_message",
+  "replyTo": "req-1",
+  "code": "BEDROCK_UNAVAILABLE",
+  "message": "The explanation could not be generated.",
+  "recoverable": true
+}

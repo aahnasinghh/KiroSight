@@ -15,6 +15,7 @@ const COMMANDS = [
   'kirosight.ask',
   'kirosight.runTests',
   'kirosight.showTestOutput',
+  'kirosight.startBackend',
 ] as const;
 
 function activateExtension(): Array<{ dispose(): void }> {

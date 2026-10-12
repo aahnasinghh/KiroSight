@@ -22,6 +22,7 @@ interface ConfigurationProperty {
   readonly default?: unknown;
   readonly description?: string;
   readonly minimum?: number;
+  readonly scope?: string;
 }
 
 interface ExtensionManifest {
@@ -127,6 +128,34 @@ describe('extension manifest', () => {
     expect(Object.prototype.hasOwnProperty.call(manifest.contributes ?? {}, 'capabilities')).toBe(false);
   });
 
+  it('contributes the optional backend launcher command without a keybinding', () => {
+    const command = manifest.contributes?.commands?.find(
+      (candidate) => candidate.command === 'kirosight.startBackend',
+    );
+
+    expect(command).toEqual({
+      command: 'kirosight.startBackend',
+      title: 'KiroSight: Start Backend',
+    });
+    expect(manifest.activationEvents).toContain('onCommand:kirosight.startBackend');
+    expect(manifest.contributes?.keybindings?.some(
+      (binding) => binding.command === 'kirosight.startBackend',
+    )).toBe(false);
+  });
+
+  it('contributes the optional user backend command setting without a runnable default', () => {
+    const properties = manifest.contributes?.configuration?.properties ?? {};
+    const backendCommand = properties['kirosight.backendCommand'];
+    const restricted = manifest.capabilities?.untrustedWorkspaces
+      ?.restrictedConfigurations ?? [];
+
+    expect(backendCommand?.type).toBe('string');
+    expect(backendCommand?.default).toBe('');
+    expect(backendCommand?.description).toBeTruthy();
+    expect(backendCommand?.scope).toBe('machine');
+    expect(restricted.filter((key) => key === 'kirosight.backendCommand')).toHaveLength(1);
+    expect(backendCommand?.default).not.toMatch(/npm|pytest|vitest|uvicorn|python|node/i);
+  });
   it('contributes trusted test settings and restricts command-bearing configuration', () => {
     const properties = manifest.contributes?.configuration?.properties ?? {};
     const testCommand = properties['kirosight.testCommand'];

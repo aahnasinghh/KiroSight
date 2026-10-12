@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "type": "hello_ack",
+  "supportedVersions": [1],
+  "capabilities": {
+    "bedrock": false,
+    "stt": false,
+    "tts": false,
+    "mic": "not_applicable"
+  }
+}

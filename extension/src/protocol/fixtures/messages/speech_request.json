@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "type": "speech_request",
+  "id": "speech-1",
+  "replyTo": "req-1",
+  "text": "There is one error."
+}
