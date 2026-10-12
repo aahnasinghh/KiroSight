@@ -16,6 +16,13 @@ export interface VoiceViewModel {
   readonly reasonText: string | null;
 }
 
+/** Only what the webview needs to show: the prompt written by the ConfirmationManager. */
+export interface PendingConfirmationView {
+  readonly promptText: string;
+  /** Opaque identity of the pending request; the same request keeps it, a different one differs. */
+  readonly presentationKey: string;
+}
+
 /**
  * The full view model. Its fields match the design's `view_state` bridge message
  * (minus the `type` discriminator), so it can be sent without renaming or mapping.
@@ -26,7 +33,8 @@ export interface ViewModel {
   readonly statusKind: StatusKind;
   readonly transcript: readonly TranscriptEntry[];
   readonly latest: string | null;
-  readonly pendingConfirmation: null;
+  /** The exact stored confirmation prompt while one is pending, otherwise null. */
+  readonly pendingConfirmation: PendingConfirmationView | null;
   readonly voice: VoiceViewModel;
   readonly listening: boolean;
 }
@@ -35,6 +43,7 @@ export interface ViewModelInput {
   readonly statusKind?: StatusKind;
   readonly voice?: VoiceViewModel;
   readonly latest?: string | null;
+  readonly pendingConfirmation?: PendingConfirmationView | null;
   readonly transcript?: readonly TranscriptEntry[];
   /** Defaults to true only for the 'listening' status kind. */
   readonly listening?: boolean;
@@ -76,7 +85,12 @@ export function createViewModel(input: ViewModelInput = {}): ViewModel {
     statusKind,
     transcript: copyTranscript(input.transcript ?? []),
     latest: input.latest ?? null,
-    pendingConfirmation: null,
+    pendingConfirmation: input.pendingConfirmation
+      ? Object.freeze({
+        promptText: input.pendingConfirmation.promptText,
+        presentationKey: input.pendingConfirmation.presentationKey,
+      })
+      : null,
     voice,
     listening: input.listening ?? statusKind === 'listening',
   });

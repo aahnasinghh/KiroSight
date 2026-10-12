@@ -42,6 +42,14 @@ describe('LocalIntentRouter', () => {
     expect(route('help')).toEqual({ route: 'local', intent: { kind: 'HELP' } });
   });
 
+  it('routes "list all failures" locally and only as a whole utterance', () => {
+    expect(route('List all failures')).toEqual({ route: 'local', intent: { kind: 'LIST_TEST_FAILURES' } });
+    expect(route('please list all failures')).toEqual({ route: 'local', intent: { kind: 'LIST_TEST_FAILURES' } });
+    for (const text of ['list all failures in auth.ts', 'list failures', 'show all failures', 'all failures']) {
+      expect(route(text).route).toBe('agent');
+    }
+  });
+
   it('routes every produced action through local validation', () => {
     const utterances = [
       'next error', 'previous error', 'go to the first error', 'go to line 10',

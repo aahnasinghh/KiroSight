@@ -104,7 +104,30 @@ describe('view model', () => {
     expect(createViewModel({ latest: '' }).latest).toBe('');
   });
 
-  it('keeps pending confirmation empty for Milestone 4', () => {
+  it('carries only the exact prompt text for a pending confirmation, frozen, and null otherwise', () => {
+    const input = {
+      promptText: 'Run tests using "npm.cmd test"? Reply confirm, decline, cancel, or repeat.',
+      presentationKey: '["local","local-1"]',
+    };
+    const pending = createViewModel({ statusKind: 'confirmation_pending', pendingConfirmation: input });
+
+    expect(pending.pendingConfirmation).toEqual(input);
+    expect(Object.isFrozen(pending.pendingConfirmation)).toBe(true);
+    expect(Object.keys(pending.pendingConfirmation!)).toEqual(['promptText', 'presentationKey']);
+    expect(createViewModel({ pendingConfirmation: null }).pendingConfirmation).toBeNull();
+    expect(createViewModel({ statusKind: 'idle' }).pendingConfirmation).toBeNull();
+  });
+
+  it('is not changed by later mutation of the pending input', () => {
+    const input = { promptText: 'original', presentationKey: 'key' };
+    const model = createViewModel({ pendingConfirmation: input });
+
+    input.promptText = 'changed';
+
+    expect(model.pendingConfirmation).toEqual({ promptText: 'original', presentationKey: 'key' });
+  });
+
+  it('does not invent a prompt when none is supplied, whatever the status', () => {
     expect(createViewModel({ statusKind: 'confirmation_pending' }).pendingConfirmation).toBeNull();
   });
 

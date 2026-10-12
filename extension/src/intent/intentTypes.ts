@@ -7,6 +7,7 @@ export type LocalIntent =
   | { kind: 'DESCRIBE_DIAGNOSTICS'; scope: 'file' | 'workspace' }
   | { kind: 'ACTION'; action: Action }
   | { kind: 'SUMMARIZE_LAST_TEST_RUN' }
+  | { kind: 'LIST_TEST_FAILURES' }
   | { kind: 'HELP' };
 
 export type RouteResult =

@@ -4,6 +4,9 @@ import { next, previous, resolve } from '../navigation/diagnosticNavigation';
 import type { DiagnosticNavigationResult } from '../navigation/diagnosticNavigation';
 import type { FileService } from '../navigation/fileService';
 import type { NavigationService } from '../navigation/navigationService';
+import { formatTestResult } from '../response/responseFormatter';
+import type { TestRunSummary } from '../testing/testOutputParser';
+import type { TestRunStore } from '../testing/testRunStore';
 import type { ActionResult } from './actionResult';
 import type { Action } from './actionTypes';
 
@@ -12,6 +15,9 @@ export interface ActionExecutorDeps {
   diagnostics: DiagnosticsService;
   files: FileService;
   navigation: NavigationService;
+  /** Runs the trusted configured test command; takes no command. TestRunner satisfies this. */
+  testRunner?: { run(): Promise<TestRunSummary> };
+  testRunStore?: TestRunStore;
 }
 
 type ActionHandlers = {
@@ -172,12 +178,27 @@ export class ActionExecutor {
     return { actionType: 'FOCUS_EDITOR', status: 'ok', message: 'Focused the editor.' };
   }
 
-  /** Placeholder until Task 5.14 replaces it with the real TestRunner delegate. */
+  /** Delegates to the injected TestRunner. The action carries no command, so none is read from it. */
   private async runTests(): Promise<ActionResult> {
+    const runner = this.deps.testRunner;
+    if (runner === undefined) {
+      return {
+        actionType: 'RUN_TESTS',
+        status: 'failed',
+        message: 'test running is not available yet',
+      };
+    }
+
+    const summary = await runner.run();
+    // A not_configured result is not a completed run, so it never replaces the last real run.
+    if (summary.outcome !== 'not_configured') this.deps.testRunStore?.set(summary);
     return {
       actionType: 'RUN_TESTS',
-      status: 'failed',
-      message: 'test running is not available yet',
+      status: summary.outcome === 'passed'
+        ? 'ok'
+        : summary.outcome === 'not_configured' ? 'not_configured' : 'failed',
+      message: formatTestResult(summary),
+      details: { kind: 'test_run', summary },
     };
   }
 }

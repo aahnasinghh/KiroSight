@@ -13,6 +13,8 @@ const COMMANDS = [
   'kirosight.nextError',
   'kirosight.previousError',
   'kirosight.ask',
+  'kirosight.runTests',
+  'kirosight.showTestOutput',
 ] as const;
 
 function activateExtension(): Array<{ dispose(): void }> {
@@ -33,7 +35,7 @@ describe('Milestone 3 command registration (post Milestone 4 wiring)', () => {
     for (const command of COMMANDS) {
       expect(vscodeMockState.registeredCommands.has(command)).toBe(true);
     }
-    expect(subscriptions).toHaveLength(3);
+    expect(subscriptions).toHaveLength(4);
 
     for (const subscription of subscriptions) subscription.dispose();
     for (const command of COMMANDS) {

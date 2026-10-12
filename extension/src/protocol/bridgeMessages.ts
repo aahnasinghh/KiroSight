@@ -124,7 +124,10 @@ export const viewStateMessageSchema = z.strictObject({
   statusKind: statusKindSchema,
   transcript: z.array(transcriptEntrySchema),
   latest: z.string().nullable(),
-  pendingConfirmation: z.null().optional(),
+  pendingConfirmation: z.strictObject({
+    promptText: z.string().min(1),
+    presentationKey: z.string().min(1),
+  }).nullable().optional(),
   voice: voiceSchema,
   listening: z.boolean(),
 });

@@ -8,7 +8,10 @@ export interface MockOutputChannel extends DisposableLike {
   readonly name: string;
   readonly lines: string[];
   readonly showCalls: Array<boolean | undefined>;
+  /** Everything written with append(), in order. */
+  text: string;
   disposed: boolean;
+  append(value: string): void;
   appendLine(line: string): void;
   show(preserveFocus?: boolean): void;
 }
@@ -108,7 +111,15 @@ export const workspaceMockState = {
   /** Absolute file paths (forward slashes) that exist in the fake workspace. */
   files: [] as string[],
   findFilesCalls: [] as Array<{ include: unknown; exclude: unknown }>,
+  configuration: new Map<string, unknown>(),
 };
+
+export function setMockConfiguration(values: Record<string, unknown>): void {
+  workspaceMockState.configuration.clear();
+  for (const [key, value] of Object.entries(values)) {
+    workspaceMockState.configuration.set(key, value);
+  }
+}
 
 export function setMockWorkspace(folderPaths: string[] | undefined, files: string[] = []): void {
   workspaceMockState.folders = folderPaths?.map((path, index) => ({
@@ -118,6 +129,7 @@ export function setMockWorkspace(folderPaths: string[] | undefined, files: strin
   }));
   workspaceMockState.files = files;
   workspaceMockState.findFilesCalls.length = 0;
+  workspaceMockState.configuration.clear();
 }
 
 export class Position {
@@ -223,6 +235,16 @@ function registerListener<T>(list: T[], listener: T): DisposableLike {
 }
 
 export const workspace = {
+  getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined } {
+    return {
+      get<T>(key: string, defaultValue?: T): T | undefined {
+        const fullKey = section === undefined ? key : `${section}.${key}`;
+        return (workspaceMockState.configuration.has(fullKey)
+          ? workspaceMockState.configuration.get(fullKey)
+          : defaultValue) as T | undefined;
+      },
+    };
+  },
   openTextDocument(uri: Uri): Promise<MockTextDocument> {
     const existing = editorMockState.editorsByPath.get(uri.path)?.document
       ?? editorMockState.documentsByPath.get(uri.path);
@@ -347,7 +369,11 @@ export const window = {
       name,
       lines: [],
       showCalls: [],
+      text: '',
       disposed: false,
+      append(value) {
+        this.text += value;
+      },
       appendLine(line) {
         this.lines.push(line);
       },

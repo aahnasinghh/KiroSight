@@ -10,6 +10,9 @@ import { DiagnosticsService } from '../../src/context/diagnosticsService';
 import type { EditorSnapshot, RawDiagnostic } from '../../src/context/editorAdapter';
 import { FileService } from '../../src/navigation/fileService';
 import { NavigationService } from '../../src/navigation/navigationService';
+import { formatActionResult } from '../../src/response/responseFormatter';
+import type { TestRunSummary } from '../../src/testing/testOutputParser';
+import { TestRunStore } from '../../src/testing/testRunStore';
 import { FakeEditorAdapter } from '../context/fakeEditorAdapter';
 
 function raw(
@@ -297,7 +300,56 @@ describe('ActionExecutor', () => {
     expect(adapter.opened).toEqual([]);
   });
 
-  it('RUN_TESTS is a failed placeholder with no side effects', async () => {
+  it('RUN_TESTS delegates once to the injected TestRunner and stores the summary', async () => {
+    const adapter = new FakeEditorAdapter({});
+    const store = new TestRunStore();
+    const runs: number[] = [];
+    const summary: TestRunSummary = {
+      outcome: 'failed', command: 'npm.cmd test', exitCode: 1, passed: 1, failed: 2, totalFailedNames: 2,
+      failingTests: [{ name: 'broken one' }], outputTruncated: false, durationMs: 3,
+    };
+    const executor = new ActionExecutor({
+      adapter, diagnostics: new DiagnosticsService(adapter), files: new FileService(adapter),
+      navigation: new NavigationService(adapter),
+      testRunner: { run: async () => { runs.push(1); return summary; } },
+      testRunStore: store,
+    });
+
+    // Extra fields on the action are never read: the runner takes no command.
+    const result = await executor.execute({ type: 'RUN_TESTS', command: 'evil', target: 'evil' } as unknown as Action);
+
+    expect(runs).toHaveLength(1);
+    expect(store.get()).toEqual(summary);
+    expect(result).toMatchObject({
+      actionType: 'RUN_TESTS', status: 'failed', details: { kind: 'test_run', summary },
+    });
+    expect(result.message).toContain('2 failed');
+    expect(formatActionResult(result)).toBe(result.message);
+  });
+
+  it('RUN_TESTS maps passed to ok and does not store a not_configured result', async () => {
+    const adapter = new FakeEditorAdapter({});
+    const store = new TestRunStore();
+    const base: TestRunSummary = {
+      outcome: 'passed', command: 'c', exitCode: 0, passed: 3, failed: 0, totalFailedNames: 0,
+      failingTests: [], outputTruncated: false, durationMs: 1,
+    };
+    let next: TestRunSummary = base;
+    const executor = new ActionExecutor({
+      adapter, diagnostics: new DiagnosticsService(adapter), files: new FileService(adapter),
+      navigation: new NavigationService(adapter),
+      testRunner: { run: async () => next }, testRunStore: store,
+    });
+
+    expect((await executor.execute({ type: 'RUN_TESTS' })).status).toBe('ok');
+    next = { ...base, outcome: 'not_configured', command: '', exitCode: null, passed: null, failed: null };
+    const result = await executor.execute({ type: 'RUN_TESTS' });
+
+    expect(result.status).toBe('not_configured');
+    expect(store.get()).toMatchObject({ outcome: 'passed' });
+  });
+
+  it('RUN_TESTS without an injected runner stays an unavailable placeholder with no side effects', async () => {
     const { adapter, executor } = setup({ diagnostics: DIAGNOSTICS, snapshot: snapshotAt('a.ts', 3) });
     const result = await executor.execute({ type: 'RUN_TESTS' });
 

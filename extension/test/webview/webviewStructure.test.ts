@@ -394,6 +394,195 @@ describe('webview runtime (real main.js in jsdom)', () => {
     expect(tabStops(harness.document)).not.toContain('confirm-no');
   });
 
+  describe('pending confirmation presentation', () => {
+    const pending = (promptText: string, presentationKey = '["local","local-1"]') => ({
+      statusKind: 'confirmation_pending' as const,
+      pendingConfirmation: { promptText, presentationKey },
+    });
+
+    /** Records every element that receives focus after this call. */
+    const recordFocus = (harness: ReturnType<typeof createHarness>) => {
+      const events: string[] = [];
+      harness.document.addEventListener('focusin', (event) => {
+        events.push((event.target as HTMLElement).id);
+      });
+      return events;
+    };
+
+    it('shows the section with the exact prompt only while pending, then hides it', () => {
+      const harness = createHarness();
+      const prompt = 'Run tests using "npm.cmd test -- --runInBand"? Reply confirm, decline, cancel, or repeat.';
+
+      harness.deliver(viewState(pending(prompt)));
+      expect(harness.byId('confirm').hidden).toBe(false);
+      expect(harness.byId('confirm-prompt').textContent).toBe(prompt);
+      expect(harness.byId('confirm-yes').textContent).toBe('Confirm');
+      expect(harness.byId('confirm-no').textContent).toBe('Decline');
+
+      harness.deliver(viewState());
+      expect(harness.byId('confirm').hidden).toBe(true);
+      expect(tabStops(harness.document)).not.toContain('confirm-yes');
+    });
+
+    it('keeps the prompt programmatically focusable but out of the Tab order, before Confirm and Decline', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Run tests?')));
+      const prompt = harness.byId('confirm-prompt');
+
+      expect(prompt.getAttribute('tabindex')).toBe('-1');
+      expect(tabStops(harness.document)).toEqual(['transcript', 'confirm-yes', 'confirm-no', 'input', 'send', 'ptt']);
+      expect(prompt.compareDocumentPosition(harness.byId('confirm-yes')) & 4).toBeTruthy();
+      expect(harness.byId('confirm-yes').compareDocumentPosition(harness.byId('confirm-no')) & 4).toBeTruthy();
+    });
+
+    it('focuses the prompt when it first appears and not the Confirm button', () => {
+      const harness = createHarness();
+
+      harness.deliver(viewState(pending('First prompt')));
+
+      expect(harness.document.activeElement).toBe(harness.byId('confirm-prompt'));
+    });
+
+    it('does not steal focus again for an unrelated update with the same prompt', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Same prompt')));
+      harness.byId('confirm-yes').focus();
+
+      harness.deliver(viewState({ ...pending('Same prompt'), latest: 'unrelated' }));
+
+      expect(harness.document.activeElement).toBe(harness.byId('confirm-yes'));
+    });
+
+    it('focuses the prompt again when the prompt changes (retarget or queued promotion)', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Run tests using "A"?')));
+      harness.byId('confirm-no').focus();
+      const focusEvents: string[] = [];
+      harness.document.addEventListener('focusin', (event) => {
+        focusEvents.push((event.target as HTMLElement).id);
+      });
+
+      harness.deliver(viewState(pending('Run tests using "B"?')));
+
+      expect(harness.document.activeElement).toBe(harness.byId('confirm-prompt'));
+      expect(harness.byId('confirm-prompt').textContent).toBe('Run tests using "B"?');
+      expect(focusEvents).toEqual(['confirm-prompt']);
+      expect(focusEvents).not.toContain('input');
+    });
+
+    it('focuses the prompt again for the same request when its prompt changes', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Run tests using "A"?', 'key-1')));
+      harness.byId('confirm-yes').focus();
+      const events = recordFocus(harness);
+
+      harness.deliver(viewState(pending('Run tests using "B"?', 'key-1')));
+
+      expect(events).toEqual(['confirm-prompt']);
+    });
+
+    it('does not refocus for the same request and the same prompt', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Same', 'key-1')));
+      harness.byId('confirm-no').focus();
+      const events = recordFocus(harness);
+
+      harness.deliver(viewState({ ...pending('Same', 'key-1'), latest: 'unrelated' }));
+
+      expect(events).toEqual([]);
+      expect(harness.document.activeElement).toBe(harness.byId('confirm-no'));
+    });
+
+    it('focuses the prompt for a different request with a different prompt', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('First', 'key-1')));
+      harness.byId('confirm-yes').focus();
+      const events = recordFocus(harness);
+
+      harness.deliver(viewState(pending('Second', 'key-2')));
+
+      expect(events).toEqual(['confirm-prompt']);
+    });
+
+    it('focuses the prompt again for a different request with IDENTICAL prompt text, never the input', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Run tests using "npm test"?', 'key-A')));
+      harness.byId('confirm-yes').focus();
+      const events = recordFocus(harness);
+
+      harness.deliver(viewState(pending('Run tests using "npm test"?', 'key-B')));
+
+      expect(events).toEqual(['confirm-prompt']);
+      expect(events).not.toContain('input');
+      expect(harness.document.activeElement).toBe(harness.byId('confirm-prompt'));
+      expect(harness.byId('confirm').hidden).toBe(false);
+    });
+
+    it('ignores a pending confirmation that lacks an identity', () => {
+      const harness = createHarness();
+
+      harness.deliver({ ...viewState(), pendingConfirmation: { promptText: 'No identity' } });
+
+      expect(harness.byId('confirm').hidden).toBe(true);
+    });
+
+    it('returns focus to the command input, keeping the draft, only after full resolution', () => {
+      const harness = createHarness();
+      harness.input.value = 'my draft';
+      harness.deliver(viewState(pending('Prompt')));
+      harness.byId('confirm-yes').focus();
+
+      harness.deliver(viewState());
+
+      expect(harness.document.activeElement).toBe(harness.input);
+      expect(harness.input.value).toBe('my draft');
+    });
+
+    it('does not move focus to the input on an idle update with nothing ever pending', () => {
+      const harness = createHarness();
+      harness.byId('ptt').focus();
+
+      harness.deliver(viewState());
+
+      expect(harness.document.activeElement).toBe(harness.byId('ptt'));
+    });
+
+    it('renders a pending prompt that was in the first state after a reload', () => {
+      const harness = createHarness();
+
+      harness.deliver(viewState(pending('Still waiting')));
+
+      expect(harness.byId('confirm').hidden).toBe(false);
+      expect(harness.document.activeElement).toBe(harness.byId('confirm-prompt'));
+    });
+
+    it('posts one confirm or decline per click, and none for a bare focus', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Prompt')));
+      const before = harness.posts.length;
+
+      harness.byId('confirm-yes').focus();
+      expect(harness.posts).toHaveLength(before);
+      harness.byId('confirm-yes').click();
+      harness.byId('confirm-no').click();
+
+      expect(harness.posts.slice(before)).toEqual([{ type: 'confirm' }, { type: 'decline' }]);
+    });
+
+    it('does not double-post on keyboard activation of a native button', () => {
+      const harness = createHarness();
+      harness.deliver(viewState(pending('Prompt')));
+      const before = harness.posts.length;
+
+      for (const key of ['Enter', ' ']) {
+        harness.key(key);
+      }
+
+      expect(harness.posts.slice(before).filter((post) => (post as { type: string }).type !== 'interrupt'))
+        .toEqual([]);
+    });
+  });
+
   it('posts confirm and decline when the buttons are activated', () => {
     const harness = createHarness();
 

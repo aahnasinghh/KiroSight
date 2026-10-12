@@ -6,6 +6,8 @@ export const DESCRIBE_ERRORS_COMMAND = 'kirosight.describeErrors' as const;
 export const NEXT_ERROR_COMMAND = 'kirosight.nextError' as const;
 export const PREVIOUS_ERROR_COMMAND = 'kirosight.previousError' as const;
 export const ASK_COMMAND = 'kirosight.ask' as const;
+export const RUN_TESTS_COMMAND = 'kirosight.runTests' as const;
+export const SHOW_TEST_OUTPUT_COMMAND = 'kirosight.showTestOutput' as const;
 
 export interface CommandHandlers {
   readonly activate: () => void | Promise<void>;
@@ -14,6 +16,8 @@ export interface CommandHandlers {
   readonly nextError: () => void | Promise<void>;
   readonly previousError: () => void | Promise<void>;
   readonly ask: () => void | Promise<void>;
+  readonly runTests: () => void | Promise<void>;
+  readonly showTestOutput: () => void | Promise<void>;
 }
 
 export function registerCommands(handlers: CommandHandlers): vscode.Disposable {
@@ -24,5 +28,7 @@ export function registerCommands(handlers: CommandHandlers): vscode.Disposable {
     vscode.commands.registerCommand(NEXT_ERROR_COMMAND, handlers.nextError),
     vscode.commands.registerCommand(PREVIOUS_ERROR_COMMAND, handlers.previousError),
     vscode.commands.registerCommand(ASK_COMMAND, handlers.ask),
+    vscode.commands.registerCommand(RUN_TESTS_COMMAND, handlers.runTests),
+    vscode.commands.registerCommand(SHOW_TEST_OUTPUT_COMMAND, handlers.showTestOutput),
   );
 }

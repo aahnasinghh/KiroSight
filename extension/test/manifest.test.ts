@@ -17,16 +17,31 @@ interface KeybindingContribution {
   readonly mac?: string;
 }
 
+interface ConfigurationProperty {
+  readonly type: string;
+  readonly default?: unknown;
+  readonly description?: string;
+  readonly minimum?: number;
+}
+
 interface ExtensionManifest {
   readonly activationEvents?: readonly string[];
   readonly contributes?: {
     readonly commands?: readonly CommandContribution[];
     readonly keybindings?: readonly KeybindingContribution[];
+    readonly configuration?: {
+      readonly properties?: Readonly<Record<string, ConfigurationProperty>>;
+    };
     readonly menus?: {
       readonly commandPalette?: ReadonlyArray<{
         readonly command: string;
         readonly when?: string;
       }>;
+    };
+  };
+  readonly capabilities?: {
+    readonly untrustedWorkspaces?: {
+      readonly restrictedConfigurations?: readonly string[];
     };
   };
 }
@@ -95,20 +110,50 @@ describe('extension manifest', () => {
     }
   });
 
-  it('contributes the Milestone 3 commands with activation events', () => {
-    const expected = [
-      ['kirosight.describeErrors', 'KiroSight: Describe Errors'],
-      ['kirosight.nextError', 'KiroSight: Next Error'],
-      ['kirosight.previousError', 'KiroSight: Previous Error'],
-      ['kirosight.ask', 'KiroSight: Ask'],
-    ] as const;
-
-    for (const [command, title] of expected) {
+  it('contributes the Milestone 5 test commands with activation events and unique command ids', () => {
+    for (const [command, title] of [
+      ['kirosight.runTests', 'KiroSight: Run Tests'],
+      ['kirosight.showTestOutput', 'KiroSight: Show Test Output'],
+    ] as const) {
       expect(manifest.contributes?.commands).toContainEqual({ command, title });
       expect(manifest.activationEvents).toContain(`onCommand:${command}`);
     }
+    const ids = (manifest.contributes?.commands ?? []).map((candidate) => candidate.command);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(expect.arrayContaining([
+      'kirosight.activate', 'kirosight.whereAmI', 'kirosight.describeErrors',
+      'kirosight.nextError', 'kirosight.previousError', 'kirosight.ask',
+    ]));
+    expect(Object.prototype.hasOwnProperty.call(manifest.contributes ?? {}, 'capabilities')).toBe(false);
   });
 
+  it('contributes trusted test settings and restricts command-bearing configuration', () => {
+    const properties = manifest.contributes?.configuration?.properties ?? {};
+    const testCommand = properties['kirosight.testCommand'];
+    const timeout = properties['kirosight.testTimeoutSeconds'];
+    const restricted = manifest.capabilities?.untrustedWorkspaces
+      ?.restrictedConfigurations ?? [];
+
+    expect(manifest.capabilities).toBeDefined();
+    expect(manifest.capabilities?.untrustedWorkspaces).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(manifest.contributes ?? {}, 'capabilities')).toBe(false);
+
+    expect(testCommand?.type).toBe('string');
+    expect(testCommand?.default).toBe('');
+    expect(testCommand?.description).toBeTruthy();
+    expect(timeout?.type).toBe('integer');
+    expect(timeout?.default).toBe(300);
+    expect(timeout?.minimum).toBeGreaterThan(0);
+    expect(restricted).toContain('kirosight.testCommand');
+    expect(restricted).toContain('kirosight.backendCommand');
+    expect(new Set(restricted).size).toBe(restricted.length);
+  });
+
+  it('does not contribute a runnable default command', () => {
+    const testCommand = manifest.contributes?.configuration?.properties?.['kirosight.testCommand'];
+
+    expect(testCommand?.default).not.toMatch(/npm|pytest|vitest|mocha|node/i);
+  });
   it('packages the compiled output and the webview media assets', () => {
     const files = (JSON.parse(
       readFileSync(resolve(testDirectory, '../package.json'), 'utf8'),

@@ -2,7 +2,12 @@ import type { LocalIntent, RouteResult } from '../intent/intentTypes';
 import { route as defaultRoute } from '../intent/localIntentRouter';
 import type { HostToWebviewMessage } from '../protocol/bridgeMessages';
 import type { TranscriptSource, TranscriptStore } from '../transcript/transcriptStore';
-import { createViewModel, type StatusKind, type ViewModel } from '../webview/viewModel';
+import {
+  createViewModel,
+  type PendingConfirmationView,
+  type StatusKind,
+  type ViewModel,
+} from '../webview/viewModel';
 import { REASONING_NOT_CONNECTED } from './localIntentHandler';
 import { RequestTracker } from './requestTracker';
 
@@ -45,11 +50,25 @@ export const inertInterceptor: PendingConfirmationInterceptor = {
   intercept: async () => ({ intercepted: false }),
 };
 
+/**
+ * The confirmation seam. While `isPending()` is true, `intercept` claims every input, so it never
+ * reaches the router, the agent, the backend or Bedrock. confirm/decline serve the panel buttons.
+ */
+export interface ConfirmationController extends PendingConfirmationInterceptor {
+  isPending(): boolean;
+  /** The pending request's stored prompt plus its presentation identity, or null. */
+  pendingConfirmation(): PendingConfirmationView | null;
+  confirm(): Promise<string | null>;
+  decline(): Promise<string | null>;
+}
+
 export interface InputPipelineDeps {
   readonly transcript: TranscriptStore;
   readonly localIntents: LocalIntentRunner;
   readonly agent?: AgentGateway;
   readonly interceptor?: PendingConfirmationInterceptor;
+  /** Pending-confirmation handling; when present it also serves as the interceptor. */
+  readonly confirmation?: ConfirmationController;
   readonly route?: (text: string) => RouteResult;
   readonly tracker?: RequestTracker;
   /** Receives a fresh immutable ViewModel whenever status, latest or transcript change. */
@@ -65,7 +84,7 @@ export class InputPipeline {
 
   public constructor(private readonly deps: InputPipelineDeps) {
     this.agent = deps.agent ?? reasoningNotConnectedGateway;
-    this.interceptor = deps.interceptor ?? inertInterceptor;
+    this.interceptor = deps.interceptor ?? deps.confirmation ?? inertInterceptor;
     this.route = deps.route ?? defaultRoute;
     this.tracker = deps.tracker ?? new RequestTracker();
   }
@@ -85,7 +104,7 @@ export class InputPipeline {
         if (intercepted.response !== undefined) {
           this.respond(intercepted.response);
         }
-        this.publish('idle');
+        this.publish(this.restingStatus());
         return 'handled';
       }
 
@@ -93,7 +112,7 @@ export class InputPipeline {
       if (routed.route === 'local') {
         const response = await this.deps.localIntents.handleIntent(routed.intent);
         this.respond(response);
-        this.publish('idle');
+        this.publish(this.restingStatus());
         return 'handled';
       }
 
@@ -112,14 +131,34 @@ export class InputPipeline {
     }
   }
 
-  /** No pending confirmation exists before Milestone 5, so this is a safe no-op. */
+  /** Confirm control: the same transition as a typed CONFIRM. A safe no-op with nothing pending. */
   public async confirm(): Promise<void> {
-    return;
+    await this.resolveControl((controller) => controller.confirm());
   }
 
-  /** No pending confirmation exists before Milestone 5, so this is a safe no-op. */
+  /** Decline control: the same transition as a typed DECLINE. A safe no-op with nothing pending. */
   public async decline(): Promise<void> {
-    return;
+    await this.resolveControl((controller) => controller.decline());
+  }
+
+  private async resolveControl(
+    action: (controller: ConfirmationController) => Promise<string | null>,
+  ): Promise<void> {
+    const controller = this.deps.confirmation;
+    if (controller === undefined) return;
+    this.publish('processing');
+    try {
+      const response = await action(controller);
+      if (response !== null) this.respond(response);
+      this.publish(this.restingStatus());
+    } catch {
+      this.respond(PIPELINE_FAILURE_TEXT);
+      this.publish('error');
+    }
+  }
+
+  private restingStatus(): StatusKind {
+    return this.deps.confirmation?.isPending() === true ? 'confirmation_pending' : 'idle';
   }
 
   /** Makes in-flight agent replies stale so they are dropped, and returns status to idle. */
@@ -137,6 +176,7 @@ export class InputPipeline {
     this.deps.onViewModel?.(createViewModel({
       statusKind,
       latest: this.latest,
+      pendingConfirmation: this.deps.confirmation?.pendingConfirmation() ?? null,
       transcript: this.deps.transcript.getEntries(),
     }));
   }

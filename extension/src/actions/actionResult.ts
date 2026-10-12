@@ -1,3 +1,4 @@
+import type { TestRunSummary } from '../testing/testOutputParser';
 import type { Action } from './actionTypes';
 
 export type ActionResultStatus =
@@ -21,7 +22,8 @@ export type ActionResultDetails =
       wrapped?: boolean;
     }
   | { kind: 'location_reached'; relativePath: string; line: number }
-  | { kind: 'ambiguous_files'; matches: string[]; totalMatches: number };
+  | { kind: 'ambiguous_files'; matches: string[]; totalMatches: number }
+  | { kind: 'test_run'; summary: TestRunSummary };
 
 export interface ActionResult {
   actionType: Action['type'];

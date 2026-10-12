@@ -11,7 +11,11 @@ import {
 import type { DiagnosticScope, DiagnosticsService } from '../context/diagnosticsService';
 import type { SymbolService } from '../context/symbolService';
 import type { LocalIntent, RouteResult } from '../intent/intentTypes';
-import { formatActionResult } from '../response/responseFormatter';
+import type { ActionGate, GateOutcome } from '../confirmation/actionGate';
+import { formatActionResult, formatTestResult } from '../response/responseFormatter';
+import { read as readTestCommand } from '../testing/testCommandConfig';
+import type { TestRunSummary } from '../testing/testOutputParser';
+import type { TestRunStore } from '../testing/testRunStore';
 
 /** Anything that can execute a validated action; ActionExecutor satisfies this. */
 export interface ActionRunner {
@@ -23,10 +27,22 @@ export interface LocalIntentHandlerDeps {
   diagnostics: DiagnosticsService;
   symbols: SymbolService;
   actions: ActionRunner;
+  /** When present, every local action goes through the registry-based gate. */
+  gate?: Pick<ActionGate, 'submit'>;
+  testRuns?: TestRunStore;
 }
 
 export const REASONING_NOT_CONNECTED = 'Reasoning is not connected yet.';
-export const TEST_SUMMARY_UNAVAILABLE = 'Test failure summaries are not available yet.';
+export const TEST_SUMMARY_UNAVAILABLE = 'No test run is available yet. Say "run tests" first.';
+const MAX_LISTED_FAILURES = 20;
+const KIROSIGHT_TESTS_HINT = 'See the KiroSight Tests output for details.';
+
+export function notConfiguredSummary(): TestRunSummary {
+  return {
+    outcome: 'not_configured', command: '', exitCode: null, passed: null, failed: null,
+    totalFailedNames: 0, failingTests: [], outputTruncated: false, durationMs: 0,
+  };
+}
 export const HELP_TEXT = [
   'You can ask: where am I, current function, read selection,',
   'what errors are there, errors in this file, next error, previous error,',
@@ -56,8 +72,12 @@ export class LocalIntentHandler {
         return this.describeDiagnostics(intent.scope === 'file' ? 'current_file' : 'workspace');
       case 'ACTION':
         return this.runAction(intent.action);
-      case 'SUMMARIZE_LAST_TEST_RUN':
-        return TEST_SUMMARY_UNAVAILABLE;
+      case 'SUMMARIZE_LAST_TEST_RUN': {
+        const run = this.deps.testRuns?.get() ?? null;
+        return run === null ? TEST_SUMMARY_UNAVAILABLE : formatTestResult(run);
+      }
+      case 'LIST_TEST_FAILURES':
+        return this.listFailures(this.deps.testRuns?.get() ?? null);
       case 'HELP':
         return HELP_TEXT;
     }
@@ -83,6 +103,58 @@ export class LocalIntentHandler {
     if (!validated.ok) {
       return `Action rejected: ${validated.message}`;
     }
-    return formatActionResult(await this.deps.actions.execute(validated.action));
+    if (this.deps.gate === undefined) {
+      return formatActionResult(await this.deps.actions.execute(validated.action));
+    }
+    return this.runGated(this.deps.gate, validated.action);
+  }
+
+  private localCounter = 0;
+
+  private async runGated(gate: Pick<ActionGate, 'submit'>, action: Action): Promise<string> {
+    let target = '';
+    if (action.type === 'RUN_TESTS') {
+      // Non-executing check, before any confirmation prompt: an unset command never asks or spawns.
+      target = readTestCommand();
+      if (target === '') return formatTestResult(notConfiguredSummary());
+    }
+
+    this.localCounter += 1;
+    const outcome = await gate.submit({
+      action, target, origin: 'local', correlationId: `local-${this.localCounter}`,
+    });
+    return this.describeGateOutcome(outcome);
+  }
+
+  private describeGateOutcome(outcome: GateOutcome): string {
+    if (outcome.kind === 'confirmation') {
+      return outcome.state === 'queued'
+        ? `Waiting for the pending confirmation first. ${outcome.request.prompt}`
+        : outcome.request.prompt;
+    }
+    return formatActionResult(outcome.result);
+  }
+
+  private listFailures(run: TestRunSummary | null): string {
+    if (run === null) return TEST_SUMMARY_UNAVAILABLE;
+    if (run.outcome === 'passed' && (run.failed ?? 0) === 0) {
+      return 'The last test run has no failing tests.';
+    }
+    if (run.outcome !== 'passed' && run.outcome !== 'failed') {
+      return `No failure list is available for the last test run. ${formatTestResult(run)}`;
+    }
+
+    const failed = run.failed ?? 0;
+    const names = run.failingTests.slice(0, MAX_LISTED_FAILURES).map(({ name }) => name);
+    if (failed === 0) {
+      return `The last test run failed, but no failing tests were reported. ${KIROSIGHT_TESTS_HINT}`;
+    }
+    if (names.length === 0) {
+      return `${failed} failed. No failing test names were available. ${KIROSIGHT_TESTS_HINT}`;
+    }
+    const more = failed > names.length
+      ? ` Showing ${names.length} of ${failed}. ${KIROSIGHT_TESTS_HINT}`
+      : '';
+    return `${failed} failed. Failing tests: ${names.join('; ')}.${more}`;
   }
 }

@@ -36,6 +36,7 @@ const rules: readonly Rule[] = [
     kind: 'ACTION', action: { type: 'RUN_TESTS' },
   }),
   exact(['summarize the test failures'], { kind: 'SUMMARIZE_LAST_TEST_RUN' }),
+  exact(['list all failures'], { kind: 'LIST_TEST_FAILURES' }),
   exact(['help', 'what can you do'], { kind: 'HELP' }),
   {
     matches: (text) => /^go to (?:the )?[123] error$/.test(text),

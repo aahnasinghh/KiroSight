@@ -63,8 +63,9 @@ describe('webview main.js source', () => {
     expect(start).toBeGreaterThan(-1);
     expect(block).toContain('elements.input.focus()');
     expect(block).not.toMatch(/value|post\(|setStatus|textContent|select\(|setSelectionRange/);
-    // Initial load focus plus the explicit focus_input path; nothing else moves focus.
-    expect(source.match(/\.focus\(\)/g)).toHaveLength(2);
+    // Initial load, the explicit focus_input path, the pending prompt, and the input after the
+    // last confirmation resolves; nothing else moves focus.
+    expect(source.match(/\.focus\(\)/g)).toHaveLength(4);
     expect(source).not.toMatch(/addEventListener\('(focus|focusin|visibilitychange)'/);
   });
 

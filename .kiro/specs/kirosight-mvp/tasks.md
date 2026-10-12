@@ -287,72 +287,72 @@ Scope guardrails taken from the approved spec:
   - Extension-only. The four-intent confirmation state machine, the registry-based gate, and a `RUN_TESTS` handler that spawns only the trusted `kirosight.testCommand`.
   - _Requirements: 5.4, 5.7, 5.9, 5.10, 5.11, 6.1, 6.2, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.1, 7.2, 7.3, 7.4, 7.6, 7.7, 7.8_
 
-  - [ ] 5.1 Spike C: trusted test command on Windows (time box: 60 minutes)
+  - [x] 5.1 Spike C: trusted test command on Windows (time box: 60 minutes)
     - Write throwaway code that runs a fixture command (for example `npm test` in a tiny fixture project) with `child_process.spawn` and `shell: true`.
     - Pass criterion: stdout, stderr and the exit code are captured. A long-running fixture is killed with `taskkill /T /F` and leaves no orphan process. A missing-executable command is reported as `did_not_execute`.
     - Fallback decision: use a direct executable plus arguments without `shell: true`, a shorter timeout, or demo with one known runner, and record the parser scope that is actually feasible.
     - Must NOT implement the real `TestRunner`. Record the outcome in `docs/spike-results.md`.
     - _Requirements: 7.2, 7.7, 7.8_
 
-  - [ ] 5.2 Implement confirmation prompt and re-prompt formatting
+  - [x] 5.2 Implement confirmation prompt and re-prompt formatting
     - Extend `response/responseFormatter.ts` with `formatConfirmation(action, target)` (contains the action name, the concrete target such as the exact test command, and the accepted replies) and `formatConfirmationReprompt(action)` (at most 30 words, naming the pending action and listing the accepted replies).
     - _Requirements: 6.1, 6.3, 6.6_
 
-  - [ ]* 5.3 Write property test for concrete confirmation prompts
+  - [x]* 5.3 Write property test for concrete confirmation prompts
     - **Property 4: Confirmation prompts and re-prompts are concrete**
     - **Validates: Requirements 6.1, 6.6**
 
-  - [ ] 5.4 Implement replyClassifier and ConfirmationManager
+  - [x] 5.4 Implement replyClassifier and ConfirmationManager
     - Implement `confirmation/replyClassifier.ts` (whole-utterance matching only, returning `confirm`, `decline`, `cancel`, `repeat` or `unrecognized`) and `confirmation/confirmationManager.ts`: at most one pending action, a FIFO hold queue presented in the order received, no timer and no expiry, CANCEL behaving exactly like DECLINE, REPEAT_CONFIRMATION re-reading the stored prompt without changing state or queue order, and the concise re-prompt for any other input. An affirmative with nothing pending has no effect and is not stored. The manager stores the resolved target at request time and re-prompts if the test command changes while pending. It records the origin and correlation id of each request.
     - _Requirements: 5.4, 6.1, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10_
 
-  - [ ]* 5.5 Write property test for the confirmation state machine
+  - [x]* 5.5 Write property test for the confirmation state machine
     - **Property 3: Confirmation state machine**
     - **Validates: Requirements 5.4, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10**
 
-  - [ ] 5.6 Implement the ActionGate
+  - [x] 5.6 Implement the ActionGate
     - Implement `confirmation/actionGate.ts`: decide from the registry risk class (never from the agent flag) whether to execute at once or request confirmation. A `needs-confirmation` action is always confirmed. A `safe` action is confirmed only when `confirmationRequired` is true. Execute exactly once on CONFIRM, never on decline, cancel or dismissal, and return a `declined` `ActionResult` with the reason. Expose the origin and correlation id so Milestone 7 can report back to the backend.
     - _Requirements: 5.2, 5.3, 5.4, 5.9, 5.10, 7.1_
 
-  - [ ]* 5.7 Write property test for registry-gated execution
+  - [x]* 5.7 Write property test for registry-gated execution
     - **Property 2: Execution is gated by registry risk**
     - **Validates: Requirements 5.2, 5.3, 5.4, 5.9, 5.10, 7.1**
 
-  - [ ] 5.8 Implement testCommandConfig and the manifest settings
+  - [x] 5.8 Implement testCommandConfig and the manifest settings
     - Implement `testing/testCommandConfig.ts` (`read()` returns the trimmed value of `kirosight.testCommand` and takes no parameters). Contribute `kirosight.testCommand` and `kirosight.testTimeoutSeconds` (default 300) in the manifest, and list `kirosight.testCommand` (and `kirosight.backendCommand`) under `capabilities.untrustedWorkspaces.restrictedConfigurations`.
     - _Requirements: 5.7, 5.11, 7.2, 7.6_
 
-  - [ ] 5.9 Implement TestOutputParser
+  - [x] 5.9 Implement TestOutputParser
     - Implement `testing/testOutputParser.ts` as pure functions with the `TestRunSummary` and `FailingTest` types: strip ANSI codes, best-effort extractors for Jest, Vitest, pytest and Mocha, and a generic fallback. Report counts, the true failed total and at most 20 failing names with excerpts capped at 300 characters and passed through `redact()`. Unrecognized output gives `completed_unparsed` with the exit code only and no invented counts.
     - _Requirements: 7.3, 7.4, 7.7_
 
-  - [ ] 5.10 Implement test result formatting
+  - [x] 5.10 Implement test result formatting
     - Extend `response/responseFormatter.ts` with `formatTestResult`: pass and fail counts, at most 5 failing names, and when more than 5 fail, the total plus a path to the rest (the full list and the `KiroSight Tests` output). Distinct messages for `did_not_execute`, `timed_out`, `cancelled`, `completed_unparsed` and `not_configured` (with how to set `kirosight.testCommand`).
     - _Requirements: 7.3, 7.4, 7.6, 7.7, 16.3, 16.4_
 
-  - [ ]* 5.11 Write property test for bounded test summaries
+  - [x]* 5.11 Write property test for bounded test summaries
     - **Property 6: Test summaries are bounded and faithful**
     - **Validates: Requirements 7.3, 7.4, 16.3, 16.4**
 
-  - [ ] 5.12 Implement TestRunner
+  - [x] 5.12 Implement TestRunner
     - Implement `testing/testRunner.ts` with an injectable process spawner: run `spawn(command, { shell: true, cwd: first workspace folder, windowsHide: true })` using only the value from `testCommandConfig`; merge stdout and stderr into a bounded head-and-tail buffer (256 KB); apply the timeout and `interrupt()` with a process-tree kill; allow one run at a time; write the full output to a `KiroSight Tests` output channel; return `not_configured` without spawning when the setting is empty. Apply the Spike C outcome (task 5.1).
     - No VS Code Test Explorer API is used.
     - _Requirements: 5.7, 5.11, 7.2, 7.3, 7.6, 7.7, 7.8_
 
-  - [ ]* 5.13 Write property test for the trusted test command
+  - [x]* 5.13 Write property test for the trusted test command
     - **Property 5: Test command comes only from trusted configuration**
     - **Validates: Requirements 5.7, 5.11, 7.2, 7.6**
 
-  - [ ] 5.14 Integrate RUN_TESTS into the executor and pipeline
+  - [x] 5.14 Integrate RUN_TESTS into the executor and pipeline
     - Replace the placeholder `RUN_TESTS` handler (task 3.14) with a `TestRunner` delegate. Run the not-configured check before any confirmation prompt is shown (no prompt and no spawn when the setting is unset). Store the last run in a `TestRunStore`. Add the `list all failures` local rule (listing up to 20 failing names from the stored run) and make "summarize the test failures" answer deterministically from the stored summary.
     - Integrate `ConfirmationManager` and `ActionGate` into `InputPipeline`: while an action is pending, text goes only to the manager, and nothing else reaches the router, the backend or Bedrock. Non-confirmation text produces the re-prompt.
     - _Requirements: 5.11, 6.1, 6.4, 6.5, 6.6, 6.8, 7.1, 7.2, 7.3, 7.4, 7.6, 7.7, 16.3, 16.4_
 
-  - [ ]* 5.15 Write integration tests for confirmation and test running
+  - [x]* 5.15 Write integration tests for confirmation and test running
     - With fakes, assert: while pending, "go to line 10" and "what errors are there" give only the re-prompt and the router spy and a backend spy are never called; a fake clock advanced by hours leaves the action pending; a second `needs-confirmation` request is held and presented in order; REPEAT_CONFIRMATION leaves the order unchanged; an idle "yes", "ok" or "just do it" executes nothing and does not authorize a later request; `did_not_execute` is reported differently from a failing run.
     - _Requirements: 6.2, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.1, 7.7_
 
-  - [ ] 5.16 Wire confirmation and tests into the extension and webview
+  - [x] 5.16 Wire confirmation and tests into the extension and webview
     - Feed the pending confirmation into the view model and webview: show the Confirm and Decline section with the prompt text, move focus to the prompt, make Tab reach Confirm then Decline, and return focus to the input when it resolves. Connect the buttons to `confirm()` and `decline()`. Register `kirosight.runTests` and `kirosight.showTestOutput`. In `extension.ts` construct `TestRunner`, `ConfirmationManager` and `ActionGate`.
     - _Requirements: 6.2, 6.3, 6.5, 14.1, 14.3, 7.1, 7.4_
 

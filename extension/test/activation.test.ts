@@ -26,8 +26,8 @@ describe('extension activation', () => {
     expect(vscodeMockState.registeredCommands.has('kirosight.whereAmI')).toBe(true);
     expect(vscodeMockState.webviewPanels).toHaveLength(0);
     expect(vscodeMockState.outputChannels).toHaveLength(0);
-    // command registrations, panel, and the single editor adapter
-    expect(subscriptions).toHaveLength(3);
+    // command registrations, panel, the single editor adapter, and the single test runner
+    expect(subscriptions).toHaveLength(4);
     expect(editorMockState.activeListeners).toHaveLength(1);
   });
 

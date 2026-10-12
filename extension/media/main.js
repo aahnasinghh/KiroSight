@@ -97,6 +97,33 @@
     elements.pttNote.textContent = voiceReason;
   }
 
+  // The prompt currently shown, or null. Focus moves only when this value changes:
+  // to the prompt when a new or changed prompt appears, and back to the command input
+  // only when a confirmation has fully resolved (no pending prompt remains).
+  // A presentation is the request identity plus its prompt: a different request is a new
+  // presentation even when its text is identical, and a changed prompt is one too.
+  var shownPrompt = null;
+  var shownKey = null;
+
+  function renderConfirmation(pending) {
+    var valid = pending && typeof pending.promptText === 'string' && pending.promptText !== '' &&
+      typeof pending.presentationKey === 'string' && pending.presentationKey !== '';
+    var prompt = valid ? pending.promptText : null;
+    var key = valid ? pending.presentationKey : null;
+
+    elements.confirm.hidden = prompt === null;
+    if (prompt !== null) {
+      elements.confirmPrompt.textContent = prompt;
+      if (prompt !== shownPrompt || key !== shownKey) {
+        elements.confirmPrompt.focus();
+      }
+    } else if (shownPrompt !== null) {
+      elements.input.focus();
+    }
+    shownPrompt = prompt;
+    shownKey = key;
+  }
+
   function renderViewState(message) {
     if (typeof message.status === 'string') {
       setStatus(message.status);
@@ -108,11 +135,7 @@
 
     elements.latest.textContent = typeof message.latest === 'string' ? message.latest : '';
 
-    var pending = message.pendingConfirmation;
-    elements.confirm.hidden = pending === null || pending === undefined;
-    if (pending && typeof pending.promptText === 'string') {
-      elements.confirmPrompt.textContent = pending.promptText;
-    }
+    renderConfirmation(message.pendingConfirmation);
 
     renderVoice(message.voice);
 

@@ -18,7 +18,9 @@
     "onCommand:kirosight.describeErrors",
     "onCommand:kirosight.nextError",
     "onCommand:kirosight.previousError",
-    "onCommand:kirosight.ask"
+    "onCommand:kirosight.ask",
+    "onCommand:kirosight.runTests",
+    "onCommand:kirosight.showTestOutput"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -26,6 +28,22 @@
     "media"
   ],
   "contributes": {
+    "configuration": {
+      "title": "KiroSight",
+      "properties": {
+        "kirosight.testCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Trusted test command to run after confirmation."
+        },
+        "kirosight.testTimeoutSeconds": {
+          "type": "integer",
+          "default": 300,
+          "minimum": 1,
+          "description": "Maximum duration for a trusted test run, in seconds."
+        }
+      }
+    },
     "commands": [
       {
         "command": "kirosight.activate",
@@ -50,6 +68,14 @@
       {
         "command": "kirosight.ask",
         "title": "KiroSight: Ask"
+      },
+      {
+        "command": "kirosight.runTests",
+        "title": "KiroSight: Run Tests"
+      },
+      {
+        "command": "kirosight.showTestOutput",
+        "title": "KiroSight: Show Test Output"
       }
     ],
     "keybindings": [
@@ -59,6 +85,14 @@
         "when": "isWindows || isLinux"
       }
     ]
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "restrictedConfigurations": [
+        "kirosight.testCommand",
+        "kirosight.backendCommand"
+      ]
+    }
   },
   "scripts": {
     "build": "npm run compile",

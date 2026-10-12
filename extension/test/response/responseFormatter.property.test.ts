@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { Action } from '../../src/actions/actionTypes';
 import type { ActionResult, ActionResultDetails, ActionResultStatus } from '../../src/actions/actionResult';
-import { formatActionResult } from '../../src/response/responseFormatter';
+import {
+  formatActionResult,
+  formatConfirmation,
+  formatConfirmationReprompt,
+} from '../../src/response/responseFormatter';
 
 const ACTION_TYPES: Action['type'][] = [
   'NO_ACTION', 'GO_TO_DIAGNOSTIC', 'NEXT_DIAGNOSTIC', 'PREVIOUS_DIAGNOSTIC',
@@ -198,6 +202,111 @@ describe('Property 21: action results state a concrete outcome or reason', () =>
           expect(JSON.stringify(result)).toBe(before);
         },
       ),
+      { numRuns: 100 },
+    );
+  });
+});
+
+const CONFIRMATION_ACTION_LABELS: Record<Action['type'], string> = {
+  NO_ACTION: 'No action',
+  GO_TO_DIAGNOSTIC: 'Go to diagnostic',
+  NEXT_DIAGNOSTIC: 'Next diagnostic',
+  PREVIOUS_DIAGNOSTIC: 'Previous diagnostic',
+  OPEN_FILE: 'Open file',
+  GO_TO_LINE: 'Go to line',
+  FOCUS_EDITOR: 'Focus editor',
+  RUN_TESTS: 'Run tests',
+};
+
+const confirmationActionArb: fc.Arbitrary<Action> = fc.oneof(
+  fc.constant({ type: 'NO_ACTION' as const }),
+  fc.record({
+    type: fc.constant('GO_TO_DIAGNOSTIC' as const),
+    index: fc.integer({ min: 0, max: 100 }),
+    severity: fc.option(fc.constantFrom('error', 'warning', 'any' as const), { nil: undefined }),
+  }).map(({ type, index, severity }) => ({
+    type, index, ...(severity === undefined ? {} : { severity }),
+  })),
+  fc.record({
+    type: fc.constant('NEXT_DIAGNOSTIC' as const),
+    severity: fc.option(fc.constantFrom('error', 'warning', 'any' as const), { nil: undefined }),
+  }).map(({ type, severity }) => ({
+    type, ...(severity === undefined ? {} : { severity }),
+  })),
+  fc.record({
+    type: fc.constant('PREVIOUS_DIAGNOSTIC' as const),
+    severity: fc.option(fc.constantFrom('error', 'warning', 'any' as const), { nil: undefined }),
+  }).map(({ type, severity }) => ({
+    type, ...(severity === undefined ? {} : { severity }),
+  })),
+  fc.string({ minLength: 1, maxLength: 80 }).map((path) => ({ type: 'OPEN_FILE' as const, path })),
+  fc.integer({ min: 1, max: 1000 }).map((line) => ({ type: 'GO_TO_LINE' as const, line })),
+  fc.constant({ type: 'FOCUS_EDITOR' as const }),
+  fc.constant({ type: 'RUN_TESTS' as const }),
+);
+
+const targetCharacterArb = fc.constantFrom(
+  ...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ._-/\\\\:()\'"'.split(''),
+);
+const concreteTargetArb = fc.oneof(
+  fc.constantFrom(
+    'npm.cmd test -- --runInBand',
+    'extension/src/AuthService.ts',
+    'C:\\fixture path\\tests',
+    'pytest -q tests/test_auth.py',
+  ),
+  fc.array(targetCharacterArb, { minLength: 1, maxLength: 200 })
+    .map((characters) => characters.join(''))
+    .filter((target) => /[A-Za-z0-9]/.test(target)),
+);
+
+const ACCEPTED_CONFIRMATION_REPLIES = ['confirm', 'decline', 'cancel', 'repeat'] as const;
+
+function words(text: string): string[] {
+  return text.trim().split(/\s+/).filter((word) => word.length > 0);
+}
+
+function replyWords(text: string): Set<string> {
+  return new Set((text.toLowerCase().match(/[a-z]+/g) ?? []));
+}
+
+describe('Property 4: confirmation prompts and re-prompts are concrete', () => {
+  it('keeps every generated confirmation concrete, complete and deterministic', () => {
+    fc.assert(
+      fc.property(confirmationActionArb, concreteTargetArb, (action, target) => {
+        const before = JSON.stringify(action);
+        const first = formatConfirmation(action, target);
+        const second = formatConfirmation(action, target);
+        const replies = replyWords(first);
+
+        expect(first.trim().length).toBeGreaterThan(0);
+        expect(first).toContain(CONFIRMATION_ACTION_LABELS[action.type]);
+        expect(first).toContain(target);
+        for (const reply of ACCEPTED_CONFIRMATION_REPLIES) {
+          expect(replies.has(reply)).toBe(true);
+        }
+        expect(second).toBe(first);
+        expect(JSON.stringify(action)).toBe(before);
+      }),
+      { numRuns: 100 },
+    );
+  });
+
+  it('keeps every generated re-prompt concise, complete and deterministic', () => {
+    fc.assert(
+      fc.property(confirmationActionArb, (action) => {
+        const first = formatConfirmationReprompt(action);
+        const second = formatConfirmationReprompt(action);
+        const replies = replyWords(first);
+
+        expect(first.trim().length).toBeGreaterThan(0);
+        expect(first).toContain(CONFIRMATION_ACTION_LABELS[action.type]);
+        for (const reply of ACCEPTED_CONFIRMATION_REPLIES) {
+          expect(replies.has(reply)).toBe(true);
+        }
+        expect(words(first).length).toBeLessThanOrEqual(30);
+        expect(second).toBe(first);
+      }),
       { numRuns: 100 },
     );
   });
