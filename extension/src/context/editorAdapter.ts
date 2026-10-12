@@ -147,9 +147,91 @@ function toFileMatch(uri: vscode.Uri): FileMatch {
   return { fsPath: uri.fsPath, relativePath: toRelativePath(uri) };
 }
 
-export class VscodeEditorAdapter implements EditorAdapter {
+/** Directories never searched when resolving a bare file name. */
+const BARE_NAME_EXCLUDE = '**/{node_modules,.git,dist,out,build}/**';
+
+/**
+ * Makes user text literal in a VS Code glob. VS Code globs have no backslash
+ * escape, so each metacharacter is wrapped in a character class.
+ */
+export function escapeGlobLiteral(text: string): string {
+  return text.replace(/[*?[\]{}]/g, (char) => (char === ']' ? '[]]' : `[${char}]`));
+}
+
+interface FileQuery {
+  glob: string;
+  exclude: string | undefined;
+}
+
+/**
+ * Turns user input into a per-workspace-folder glob. A bare name searches
+ * recursively by exact basename; anything with a separator is an exact
+ * workspace-relative path. Returns null for input that cannot be a safe
+ * workspace-relative path (empty segments, `.`/`..`, absolute paths).
+ */
+export function toFileQuery(input: string): FileQuery | null {
+  const normalized = input.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (normalized === '') {
+    return null;
+  }
+
+  const segments = normalized.split('/');
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
+    return null;
+  }
+
+  const literal = segments.map(escapeGlobLiteral).join('/');
+  return segments.length === 1
+    ? { glob: `**/${literal}`, exclude: BARE_NAME_EXCLUDE }
+    : { glob: literal, exclude: undefined };
+}
+
+export class VscodeEditorAdapter implements EditorAdapter, vscode.Disposable {
+  /**
+   * The most recently active real text editor. A webview taking focus makes
+   * `activeTextEditor` undefined without closing the file, so that event must
+   * never clear this.
+   */
+  private lastTextEditor: vscode.TextEditor | undefined;
+  private readonly subscriptions: vscode.Disposable[];
+
+  public constructor() {
+    this.lastTextEditor = vscode.window.activeTextEditor;
+    this.subscriptions = [
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor !== undefined) {
+          this.lastTextEditor = editor;
+        }
+      }),
+      vscode.workspace.onDidCloseTextDocument((document) => {
+        if (this.lastTextEditor?.document === document) {
+          this.lastTextEditor = undefined;
+        }
+      }),
+    ];
+  }
+
+  public dispose(): void {
+    for (const subscription of this.subscriptions.splice(0)) {
+      subscription.dispose();
+    }
+  }
+
+  /** The single definition of "current editor": active if any, else the last one used. */
+  private currentOrLastTextEditor(): vscode.TextEditor | undefined {
+    const active = vscode.window.activeTextEditor;
+    if (active !== undefined) {
+      this.lastTextEditor = active;
+      return active;
+    }
+    if (this.lastTextEditor?.document.isClosed === true) {
+      this.lastTextEditor = undefined;
+    }
+    return this.lastTextEditor;
+  }
+
   public snapshot(): EditorSnapshot | null {
-    const editor = vscode.window.activeTextEditor;
+    const editor = this.currentOrLastTextEditor();
     if (!editor || editor.document.isUntitled && !editor.document.uri.fsPath) {
       return null;
     }
@@ -216,6 +298,7 @@ export class VscodeEditorAdapter implements EditorAdapter {
   public async reveal(fsPath: string, pos: Pos): Promise<void> {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
     const editor = await vscode.window.showTextDocument(document);
+    this.lastTextEditor = editor;
     const position = new vscode.Position(Math.max(0, pos.line - 1), Math.max(0, pos.column - 1));
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));
@@ -223,12 +306,32 @@ export class VscodeEditorAdapter implements EditorAdapter {
 
   public async openFile(fsPath: string): Promise<void> {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
-    await vscode.window.showTextDocument(document);
+    this.lastTextEditor = await vscode.window.showTextDocument(document);
   }
 
   public async findFiles(name: string): Promise<FileMatch[]> {
-    const files = await vscode.workspace.findFiles(name);
-    return files.map(toFileMatch);
+    const query = toFileQuery(name);
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    if (query === null || folders.length === 0) {
+      return [];
+    }
+
+    const matches: FileMatch[] = [];
+    const seen = new Set<string>();
+    for (const folder of folders) {
+      const pattern = new vscode.RelativePattern(folder, query.glob);
+      const uris = await vscode.workspace.findFiles(pattern, query.exclude);
+      const found = uris
+        .map(toFileMatch)
+        .sort((a, b) => (a.fsPath < b.fsPath ? -1 : a.fsPath > b.fsPath ? 1 : 0));
+      for (const match of found) {
+        if (!seen.has(match.fsPath)) {
+          seen.add(match.fsPath);
+          matches.push(match);
+        }
+      }
+    }
+    return matches;
   }
 
   public async focusEditor(): Promise<void> {

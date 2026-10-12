@@ -56,6 +56,51 @@ describe('webview html', () => {
     expect(() => buildContentSecurityPolicy('', nonce)).toThrow();
   });
 
+  it.each([
+    "'self' https://*.vscode-cdn.net",
+    "https://*.vscode-cdn.net 'self'",
+    'vscode-webview-resource: https://*.vscode-webview.net',
+    'https://file+.vscode-resource.vscode-cdn.net',
+  ])('accepts platform cspSource %j and keeps the approved CSP shape', (cspSource) => {
+    const csp = cspOf(buildWebviewHtml({ ...options, cspSource }));
+
+    expect(csp).toBe(
+      `default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}'; media-src blob: data:;`,
+    );
+    expect(csp).not.toContain('connect-src');
+    expect(csp).not.toContain('unsafe-inline');
+    expect(csp).not.toContain('unsafe-eval');
+  });
+
+  it.each([
+    'x; connect-src *',
+    "x;script-src 'unsafe-inline'",
+    "'self'\nconnect-src *",
+    "'self'\r\nconnect-src *",
+    "'self'\rx",
+    "'self'\thttps://a.example",
+    "'self'  https://a.example",
+    ' https://a.example',
+    'https://a.example ',
+    "'self', https://a.example",
+    'x" onload="alert(1)',
+    'x><script>',
+    "'self' \u0000",
+    "'self' 'unsafe-inline'",
+    "'UNSAFE-EVAL' https://a.example",
+    "'unsafe-hashes'",
+    "'wasm-unsafe-eval'",
+    '',
+  ])('rejects unsafe cspSource %j', (cspSource) => {
+    expect(() => buildContentSecurityPolicy(cspSource, nonce)).toThrow('Invalid webview CSP source.');
+  });
+
+  it('still rejects a weak nonce with a realistic cspSource', () => {
+    expect(() => buildContentSecurityPolicy("'self' https://*.vscode-cdn.net", 'short')).toThrow(
+      'Invalid webview nonce.',
+    );
+  });
+
   it('generates fresh, well-formed nonces', () => {
     const nonces = Array.from({ length: 50 }, () => generateNonce());
 

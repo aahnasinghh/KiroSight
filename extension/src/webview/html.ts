@@ -36,15 +36,40 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** A CSP source must stay a single source expression and cannot add directives. */
-const CSP_SOURCE_PATTERN = /^[^\s;,"<>]+$/;
+/**
+ * `webview.cspSource` is platform-provided and may be a source list such as
+ * `'self' https://*.vscode-cdn.net`. Accept one or more tokens separated by
+ * single spaces. Reject `;` (directive injection), `,` (policy separator),
+ * `"`, `<`, `>`, and any whitespace or control character other than the
+ * single separating space (tabs, CR, LF, etc.).
+ */
+// eslint-disable-next-line no-control-regex
+const CSP_TOKEN = '[^\\s;,"<>\\x00-\\x1f\\x7f]+';
+const CSP_SOURCE_PATTERN = new RegExp(`^${CSP_TOKEN}(?: ${CSP_TOKEN})*$`);
+
+/** Keywords that must never appear in the final policy. */
+const FORBIDDEN_CSP_TOKENS = new Set([
+  "'unsafe-inline'",
+  "'unsafe-eval'",
+  "'unsafe-hashes'",
+  "'wasm-unsafe-eval'",
+]);
+
+function isValidCspSource(cspSource: string): boolean {
+  if (!CSP_SOURCE_PATTERN.test(cspSource)) {
+    return false;
+  }
+  return !cspSource
+    .split(' ')
+    .some((token) => FORBIDDEN_CSP_TOKENS.has(token.toLowerCase()));
+}
 
 /** CSP per the approved design. There is deliberately no connect-src. */
 export function buildContentSecurityPolicy(cspSource: string, nonce: string): string {
   if (!NONCE_PATTERN.test(nonce)) {
     throw new Error('Invalid webview nonce.');
   }
-  if (!CSP_SOURCE_PATTERN.test(cspSource)) {
+  if (!isValidCspSource(cspSource)) {
     throw new Error('Invalid webview CSP source.');
   }
   return [

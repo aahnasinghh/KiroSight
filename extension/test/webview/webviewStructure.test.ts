@@ -14,7 +14,7 @@ const stylesSource = readFileSync(resolve(testDirectory, '../../media/styles.css
 
 const nonce = 'dGVzdC1ub25jZS12YWx1ZQ==';
 const options = {
-  cspSource: 'https://webview.example.invalid',
+  cspSource: "'self' https://*.vscode-cdn.net",
   styleUri: 'https://webview.example.invalid/media/styles.css',
   scriptUri: 'https://webview.example.invalid/media/main.js',
   nonce,

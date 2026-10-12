@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -107,6 +107,20 @@ describe('extension manifest', () => {
       expect(manifest.contributes?.commands).toContainEqual({ command, title });
       expect(manifest.activationEvents).toContain(`onCommand:${command}`);
     }
+  });
+
+  it('packages the compiled output and the webview media assets', () => {
+    const files = (JSON.parse(
+      readFileSync(resolve(testDirectory, '../package.json'), 'utf8'),
+    ) as { files?: string[] }).files ?? [];
+
+    expect(files).toContain('dist');
+    expect(files).toContain('media');
+    for (const excluded of ['src', 'test', 'node_modules']) {
+      expect(files).not.toContain(excluded);
+    }
+    expect(existsSync(resolve(testDirectory, '../media/main.js'))).toBe(true);
+    expect(existsSync(resolve(testDirectory, '../media/styles.css'))).toBe(true);
   });
 
   it('matches the default keybinding to the recorded Spike A decision', () => {

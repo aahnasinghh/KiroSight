@@ -115,7 +115,7 @@ describe('WebviewProvider', () => {
     provider.openOrFocus();
 
     const html = panel().webview.html;
-    expect(html).toContain("style-src mock-csp-source;");
+    expect(html).toContain("style-src 'self' https://*.vscode-cdn.net;");
     expect(html).toContain('href="mock-uri:webview:/ext/media/styles.css"');
     expect(html).toContain('src="mock-uri:webview:/ext/media/main.js"');
     expect(nonceOf(html).length).toBeGreaterThan(0);

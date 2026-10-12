@@ -22,7 +22,8 @@
   ],
   "main": "./dist/extension.js",
   "files": [
-    "dist"
+    "dist",
+    "media"
   ],
   "contributes": {
     "commands": [

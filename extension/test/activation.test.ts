@@ -1,53 +1,57 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activate } from '../src/extension';
-import { resetVscodeMock, vscodeMockState } from './mocks/vscode';
+import { Uri, editorMockState, resetEditorMock, resetVscodeMock, vscodeMockState } from './mocks/vscode';
 
 interface DisposableLike {
   dispose(): void;
 }
 
+function boot(): DisposableLike[] {
+  const subscriptions: DisposableLike[] = [];
+  activate({ subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0]);
+  return subscriptions;
+}
+
 describe('extension activation', () => {
   beforeEach(() => {
     resetVscodeMock();
+    resetEditorMock();
   });
 
-  it('registers and invokes kirosight.activate without a keybinding dependency', async () => {
-    const subscriptions: DisposableLike[] = [];
-    const context = { subscriptions } as Parameters<typeof activate>[0];
+  it('activates, registers its commands, and creates no panel until asked', () => {
+    const subscriptions = boot();
 
-    activate(context);
-
-    expect(vscodeMockState.outputChannels).toHaveLength(1);
-    expect(vscodeMockState.outputChannels[0].name).toBe('KiroSight');
     expect(vscodeMockState.registeredCommands.has('kirosight.activate')).toBe(true);
     expect(vscodeMockState.registeredCommands.has('kirosight.whereAmI')).toBe(true);
-    expect(subscriptions).toHaveLength(2);
-    expect(subscriptions[0]).toBe(vscodeMockState.outputChannels[0]);
+    expect(vscodeMockState.webviewPanels).toHaveLength(0);
+    expect(vscodeMockState.outputChannels).toHaveLength(0);
+    // command registrations, panel, and the single editor adapter
+    expect(subscriptions).toHaveLength(3);
+    expect(editorMockState.activeListeners).toHaveLength(1);
+  });
 
+  it('opens the KiroSight panel for kirosight.activate and reuses it on repeat', async () => {
+    boot();
     const handler = vscodeMockState.registeredCommands.get('kirosight.activate');
-    expect(handler).toBeTypeOf('function');
+
+    await expect(Promise.resolve(handler?.())).resolves.toBeUndefined();
     await expect(Promise.resolve(handler?.())).resolves.toBeUndefined();
 
-    expect(vscodeMockState.outputChannels[0].lines).toEqual(['KiroSight is active.']);
-    expect(vscodeMockState.outputChannels[0].showCalls).toEqual([true]);
+    expect(vscodeMockState.webviewPanels).toHaveLength(1);
+    expect(vscodeMockState.webviewPanels[0].title).toBe('KiroSight');
+    expect(vscodeMockState.webviewPanels[0].revealCalls).toEqual([[undefined, false]]);
+  });
 
-    const whereAmIHandler = vscodeMockState.registeredCommands.get('kirosight.whereAmI');
-    expect(whereAmIHandler).toBeTypeOf('function');
-    await expect(Promise.resolve(whereAmIHandler?.())).resolves.toBeUndefined();
-
-    expect(vscodeMockState.outputChannels).toHaveLength(1);
-    expect(vscodeMockState.outputChannels[0].lines).toEqual([
-      'KiroSight is active.',
-      'No file is open.',
-    ]);
-    expect(vscodeMockState.outputChannels[0].showCalls).toEqual([true, true]);
+  it('disposes its command registrations and panel with the extension', async () => {
+    const subscriptions = boot();
+    await vscodeMockState.registeredCommands.get('kirosight.activate')?.();
 
     for (const subscription of subscriptions) {
       subscription.dispose();
     }
 
-    expect(vscodeMockState.outputChannels[0].disposed).toBe(true);
+    expect(vscodeMockState.webviewPanels[0].disposed).toBe(true);
     expect(vscodeMockState.registeredCommands.has('kirosight.activate')).toBe(false);
     expect(vscodeMockState.registeredCommands.has('kirosight.whereAmI')).toBe(false);
   });
