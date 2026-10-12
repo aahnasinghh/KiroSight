@@ -283,7 +283,7 @@ Scope guardrails taken from the approved spec:
   - [x] 4.15 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: type the Milestone 2 and 3 commands into the panel, read the persistent transcript, and operate everything by keyboard alone.
 
-- [ ] 5. Milestone 5: Confirmation flow and trusted RUN_TESTS
+- [x] 5. Milestone 5: Confirmation flow and trusted RUN_TESTS
   - Extension-only. The four-intent confirmation state machine, the registry-based gate, and a `RUN_TESTS` handler that spawns only the trusted `kirosight.testCommand`.
   - _Requirements: 5.4, 5.7, 5.9, 5.10, 5.11, 6.1, 6.2, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 7.1, 7.2, 7.3, 7.4, 7.6, 7.7, 7.8_
 
@@ -356,7 +356,7 @@ Scope guardrails taken from the approved spec:
     - Feed the pending confirmation into the view model and webview: show the Confirm and Decline section with the prompt text, move focus to the prompt, make Tab reach Confirm then Decline, and return focus to the input when it resolves. Connect the buttons to `confirm()` and `decline()`. Register `kirosight.runTests` and `kirosight.showTestOutput`. In `extension.ts` construct `TestRunner`, `ConfirmationManager` and `ActionGate`.
     - _Requirements: 6.2, 6.3, 6.5, 14.1, 14.3, 7.1, 7.4_
 
-  - [ ] 5.17 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 5.17 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: type "run my tests", read the confirmation prompt, try confirm, decline, cancel and repeat, and read the concise pass and fail summary.
 
 - [ ] 6. Milestone 6: Python backend and mock WebSocket round trip
