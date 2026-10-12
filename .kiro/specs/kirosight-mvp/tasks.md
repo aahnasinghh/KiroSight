@@ -217,7 +217,7 @@ Scope guardrails taken from the approved spec:
   - [x] 3.21 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: use `KiroSight: Ask` to run "what errors are there", "go to the first error", "open auth.ts" and "go to line 40", and read the concrete text result of each.
 
-- [ ] 4. Milestone 4: Accessible webview and typed command pipeline
+- [x] 4. Milestone 4: Accessible webview and typed command pipeline
   - Extension-only. One `InputPipeline` for all text input, an append-only transcript, a plain HTML/CSS/JS webview panel, and a closed, validated bridge between the webview and the extension host. Confirm and Decline controls are rendered but stay hidden until Milestone 5 supplies a pending confirmation.
   - _Requirements: 8.1, 8.3, 8.4, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 15.1, 15.2, 15.4, 19.1, 19.3, 19.4, 19.10_
 
@@ -276,11 +276,11 @@ Scope guardrails taken from the approved spec:
     - Add jsdom (exact pinned version) and test: DOM order equals the expected Tab order, landmarks and labels exist, exactly one live announcer for transcript entries, the CSP string has no `connect-src`, no credential patterns appear in `media/` or the generated HTML, the input draft is kept until `submit_ack` is `handled`, and the push-to-talk control stays in the Tab order with `aria-disabled` and no `disabled` attribute.
     - _Requirements: 8.3, 10.3, 14.1, 14.3, 14.4, 15.4, 19.3, 19.4_
 
-  - [ ] 4.14 Wire the panel and pipeline together
+  - [x] 4.14 Wire the panel and pipeline together
     - In `extension.ts`, construct `TranscriptStore`, view model, `InputPipeline` and `WebviewProvider`. Make `kirosight.ask`, `whereAmI` and the other commands go through the pipeline so that the transcript records their query and response. Make `kirosight.activate` open and focus the panel. The status label and the transcript update the webview within 500 ms of a state change.
     - _Requirements: 8.1, 14.3, 15.1, 15.2, 15.4, 18.1, 18.5_
 
-  - [ ] 4.15 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 4.15 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: type the Milestone 2 and 3 commands into the panel, read the persistent transcript, and operate everything by keyboard alone.
 
 - [ ] 5. Milestone 5: Confirmation flow and trusted RUN_TESTS
