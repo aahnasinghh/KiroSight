@@ -265,14 +265,14 @@ describe('Task 6.19 real relay through the extension graph', () => {
     await openPanel();
     const socket = await connect(factory);
 
-    const submitted = panel().receive({ type: 'submit_text', submitId: 's1', text: 'explain this error' });
+    const submitted = panel().receive({ type: 'submit_text', submitId: 's1', text: 'tell me about this project' });
     await flush();
 
     const requests = socket.sentMessages.filter((frame) => frame.type === 'agent_request');
     expect(socket.sentMessages.map((frame) => frame.type)).toEqual(['hello', 'agent_request']);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
-      version: 1, kind: 'utterance', id: 'req-1', utterance: { text: 'explain this error', source: 'typed' },
+      version: 1, kind: 'utterance', id: 'req-1', utterance: { text: 'tell me about this project', source: 'typed' },
     });
 
     socket.triggerJson({
@@ -280,7 +280,7 @@ describe('Task 6.19 real relay through the extension graph', () => {
       type: 'agent_response',
       replyTo: requests[0]!.id,
       speech: 'Canned stub answer.',
-      action: { type: 'RUN_TESTS' },
+      action: { type: 'NO_ACTION' },
       confirmationRequired: false,
     });
     await submitted;
@@ -292,7 +292,8 @@ describe('Task 6.19 real relay through the extension graph', () => {
     expect(last.latest).toBe('Canned stub answer.');
     expect(last.transcript.filter((entry) => entry.role === 'kirosight').map((entry) => entry.text))
       .toEqual(['Canned stub answer.']);
-    // The proposed action is never validated, confirmed or executed in this task.
+    // The stub's plain answer carries NO_ACTION: nothing is confirmed or executed. (Since Task 7.13
+    // other proposed actions are validated and gated; see milestone7Wiring.test.ts.)
     expect(last.pendingConfirmation ?? null).toBeNull();
     expect(spawned).toEqual([]);
     expect(everythingShown()).not.toContain('RUN_TESTS');
@@ -313,7 +314,7 @@ describe('Task 6.19 real relay through the extension graph', () => {
     const { factory } = boot();
     await openPanel();
 
-    await panel().receive({ type: 'submit_text', submitId: 's1', text: 'explain this error' });
+    await panel().receive({ type: 'submit_text', submitId: 's1', text: 'tell me about this project' });
     await panel().receive({ type: 'submit_text', submitId: 's2', text: 'where am I' });
 
     const unavailable = posted().filter((m) => m.type === 'backend_unavailable');
@@ -329,7 +330,7 @@ describe('Task 6.19 real relay through the extension graph', () => {
   it('does not replay an offline request after the connection comes up', async () => {
     const { factory } = boot();
     await openPanel();
-    await panel().receive({ type: 'submit_text', submitId: 's1', text: 'explain this error' });
+    await panel().receive({ type: 'submit_text', submitId: 's1', text: 'tell me about this project' });
 
     const socket = await connect(factory);
 
@@ -360,7 +361,7 @@ describe('Task 6.19 backend token', () => {
     await openPanel();
     const socket = await connect(factory);
     await panel().receive({ type: 'ready' });
-    const submitted = panel().receive({ type: 'submit_text', submitId: 's1', text: 'explain this error' });
+    const submitted = panel().receive({ type: 'submit_text', submitId: 's1', text: 'tell me about this project' });
     await flush();
     socket.triggerJson({
       version: 1, type: 'agent_response', replyTo: 'req-1', speech: 'ok', action: { type: 'NO_ACTION' },
@@ -384,7 +385,7 @@ describe('Task 6.19 backend token', () => {
       version: 1, type: 'error_message', code: 'UNAUTHORIZED', message: 'Not authorized.', recoverable: false,
     });
     await flush();
-    await panel().receive({ type: 'submit_text', submitId: 's1', text: 'explain this error' });
+    await panel().receive({ type: 'submit_text', submitId: 's1', text: 'tell me about this project' });
 
     expect(everythingShown()).not.toContain(SENTINEL);
   });
@@ -498,7 +499,7 @@ describe('Task 6.19 composition root', () => {
       expect(source.match(new RegExp(`new ${constructor}\\(`, 'g'))).toHaveLength(1);
     }
     expect(source).toContain('new ConnectionManager({ client: backendClient');
-    expect(source).toContain('new BackendAgentGateway({ client: backendClient, context: contextService })');
+    expect(source).toContain('client: backendClient,\n    context: contextService,\n    actions: agentActionHandler,');
     expect(source).toContain('agent: agentGateway');
   });
 

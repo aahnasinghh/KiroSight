@@ -17,7 +17,7 @@ const EMPTY_DIAGNOSTIC_COUNTS = {
   hint: 0,
 } as const;
 
-function diagnosticCounts(diagnostics: IDEContext['diagnostics']): IDEContext['diagnosticCounts'] {
+export function diagnosticCounts(diagnostics: IDEContext['diagnostics']): IDEContext['diagnosticCounts'] {
   return diagnostics.reduce(
     (counts, diagnostic) => ({
       ...counts,

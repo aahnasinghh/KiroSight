@@ -9,6 +9,7 @@ from app.protocol.messages import (
     ActionEnvelope,
     AgentRequest,
     AgentResponse,
+    ErrorMessage,
 )
 
 __all__ = ["STUB_SPEECH", "AgentResponder", "StubAgent"]
@@ -19,7 +20,7 @@ STUB_SPEECH = "KiroSight backend is connected."
 class AgentResponder(Protocol):
     """The seam the WebSocket layer calls. Tests may inject a slow or failing implementation."""
 
-    async def respond(self, request: AgentRequest) -> AgentResponse: ...
+    async def respond(self, request: AgentRequest) -> AgentResponse | ErrorMessage: ...
 
 
 class StubAgent:

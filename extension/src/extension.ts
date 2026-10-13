@@ -17,11 +17,15 @@ import { ConfirmationManager } from './confirmation/confirmationManager';
 import { ContextService } from './context/contextService';
 import { DiagnosticsService } from './context/diagnosticsService';
 import { VscodeEditorAdapter } from './context/editorAdapter';
+import { ExplanationRequestBuilder } from './context/explanationRequest';
 import { SymbolService } from './context/symbolService';
 import { FileService } from './navigation/fileService';
 import { NavigationService } from './navigation/navigationService';
+import { AgentActionHandler } from './pipeline/agentActionHandler';
 import { InputPipeline } from './pipeline/inputPipeline';
 import { LocalIntentHandler } from './pipeline/localIntentHandler';
+import { TestRunSummarizer } from './pipeline/testRunSummarizer';
+import { read as readTestCommand } from './testing/testCommandConfig';
 import { TestRunStore } from './testing/testRunStore';
 import { TestRunner } from './testing/testRunner';
 import { TranscriptStore } from './transcript/transcriptStore';
@@ -64,7 +68,17 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
   });
   const confirmationManager = new ConfirmationManager(currentTestTarget);
   const actionGate = new ActionGate({ confirmations: confirmationManager, executor: actionExecutor });
-  const confirmationController = new GateConfirmationController(actionGate, confirmationManager);
+  // Told how every confirmation ends. An agent-originated one gets its single action_result from
+  // the action handler; a failed test run, local or agent, gets its summary. Both are declared
+  // below and only called later, when a confirmation actually resolves.
+  const confirmationController = new GateConfirmationController(
+    actionGate,
+    confirmationManager,
+    (resolution) => {
+      agentActionHandler.onResolution(resolution);
+      testRunSummarizer.onResolution(resolution);
+    },
+  );
   const localIntentHandler = new LocalIntentHandler({
     context: contextService,
     diagnostics: diagnosticsService,
@@ -83,7 +97,40 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     scheduler: overrides.scheduler,
   });
   const connectionManager = new ConnectionManager({ client: backendClient, scheduler: overrides.scheduler });
-  const agentGateway = new BackendAgentGateway({ client: backendClient, context: contextService });
+  // Responses nobody is waiting for (a pushed action, a later test summary) join the transcript
+  // through the pipeline's own path. Nothing is added once the extension is disposed.
+  let disposed = false;
+  const pendingSummaryTimers = new Set<ReturnType<typeof setTimeout>>();
+  const announce = (text: string): void => {
+    if (!disposed) inputPipeline.announce(text);
+  };
+
+  // Every action an answer proposes is validated and gated in this handler, which also owns the
+  // one action_result. The test command is read from trusted configuration only.
+  const agentActionHandler = new AgentActionHandler({
+    gate: actionGate,
+    sender: backendClient,
+    readTestCommand,
+    present: announce,
+  });
+  const testRunSummarizer = new TestRunSummarizer({
+    client: backendClient,
+    context: contextService,
+    // Deferred one turn so the deterministic result text is always shown first.
+    present: (text) => {
+      const timer = setTimeout(() => {
+        pendingSummaryTimers.delete(timer);
+        announce(text);
+      }, 0);
+      pendingSummaryTimers.add(timer);
+    },
+  });
+  const explanationBuilder = new ExplanationRequestBuilder(editorAdapter, symbolService, diagnosticsService);
+  const agentGateway = new BackendAgentGateway({
+    client: backendClient,
+    context: contextService,
+    actions: agentActionHandler,
+  });
 
   // The optional token is read from SecretStorage once; it reaches only the next `hello`.
   const tokenLoaded: Promise<void> = readBackendToken(context.secrets).then((token) => {
@@ -118,6 +165,7 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     localIntents: localIntentHandler,
     confirmation: confirmationController,
     agent: agentGateway,
+    explainer: explanationBuilder,
     // State changes reach an open panel immediately; a closed panel just keeps the state.
     onViewModel: (model) => {
       currentViewModel = model;
@@ -198,11 +246,25 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     setBackendToken: createSetBackendTokenHandler({ secrets: context.secrets, applyTokenChange }),
   });
 
+  // One listener for actions the backend pushes, registered once for the life of the extension.
+  const actionRequestSubscription = agentActionHandler.listen(backendClient);
+
   context.subscriptions.push(
     commandRegistrations,
     panel,
     editorAdapter,
     testRunner,
-    vscode.Disposable.from(connectionManager, backendStateSubscription),
+    vscode.Disposable.from(
+      connectionManager,
+      backendStateSubscription,
+      actionRequestSubscription,
+      {
+        dispose: () => {
+          disposed = true;
+          for (const timer of pendingSummaryTimers) clearTimeout(timer);
+          pendingSummaryTimers.clear();
+        },
+      },
+    ),
   );
 }

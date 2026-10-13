@@ -1,0 +1,29 @@
+{
+  "name": "kirosight-webview-mic-spike",
+  "displayName": "KiroSight Spike D: Webview Microphone",
+  "description": "Throwaway Spike D extension for checking microphone capture in a Kiro webview.",
+  "version": "0.0.1",
+  "publisher": "kirosight-local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:kirosight.micSpike"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "kirosight.micSpike",
+        "title": "KiroSight: Microphone Capture (Spike D)"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node smoke-test.js"
+  }
+}

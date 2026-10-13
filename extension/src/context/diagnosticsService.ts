@@ -12,6 +12,12 @@ export type DiagnosticsResult =
   | { status: 'no_file_open'; diagnostics: [] }
   | { status: 'no_diagnostics'; diagnostics: [] };
 
+/** A diagnostic together with the range it covers (1-indexed). */
+export interface DiagnosticEntry {
+  readonly diagnostic: DiagnosticInfo;
+  readonly range: RawDiagnostic['range'];
+}
+
 const SEVERITY_ORDER: Record<DiagnosticInfo['severity'], number> = {
   error: 0,
   warning: 1,
@@ -89,6 +95,23 @@ export class DiagnosticsService {
       diagnostics: entries.map(({ info }) => info),
       fsPaths: new Map(entries.map(({ info, fsPath }) => [info, fsPath])),
     };
+  }
+
+  /**
+   * The diagnostics of one file with their source ranges, ordered by start line then column (stable
+   * for ties). For explanation requests, which need the range to decide which diagnostic is at the
+   * cursor. `DiagnosticInfo` carries no absolute path; the caller already holds `fsPath`.
+   */
+  public getFileEntries(fsPath: string): DiagnosticEntry[] {
+    return stableSort(
+      this.adapter
+        .allDiagnostics()
+        .filter((raw) => raw.fsPath === fsPath)
+        .map((raw) => ({ diagnostic: mapDiagnostic(raw), range: raw.range })),
+      (left, right) =>
+        left.range.start.line - right.range.start.line
+        || left.range.start.column - right.range.start.column,
+    );
   }
 
   public getDiagnostics(scope: DiagnosticScope): DiagnosticsResult {

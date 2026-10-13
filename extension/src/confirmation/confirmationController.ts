@@ -1,3 +1,4 @@
+import type { ActionResult } from '../actions/actionResult';
 import type { Action } from '../actions/actionTypes';
 import type { ConfirmationController } from '../pipeline/inputPipeline';
 import type { PendingConfirmationView } from '../webview/viewModel';
@@ -5,7 +6,7 @@ import { read as readTestCommand } from '../testing/testCommandConfig';
 import { notConfiguredSummary } from '../pipeline/localIntentHandler';
 import { formatActionResult, formatTestResult } from '../response/responseFormatter';
 import type { ActionGate, GateReplyOutcome } from './actionGate';
-import type { ConfirmationManager, ConfirmationRequest } from './confirmationManager';
+import type { ConfirmationManager, ConfirmationOrigin, ConfirmationRequest } from './confirmationManager';
 import { classifyReply } from './replyClassifier';
 
 /**
@@ -16,6 +17,27 @@ export function currentTestTarget(action: Action): string | undefined {
   return action.type === 'RUN_TESTS' ? readTestCommand() : undefined;
 }
 
+/** How one confirmed, declined, cancelled or dropped request ended. */
+export interface GateResolution {
+  readonly origin: ConfirmationOrigin;
+  /** The agent's `replyTo` / `action_request` id, or a local id. */
+  readonly correlationId: string;
+  readonly result: ActionResult;
+}
+
+export type GateResolutionObserver = (resolution: GateResolution) => void;
+
+/** The result for a pending RUN_TESTS dropped because the trusted command is no longer set. */
+function notConfiguredResult(): ActionResult {
+  const summary = notConfiguredSummary();
+  return {
+    actionType: 'RUN_TESTS',
+    status: 'not_configured',
+    message: formatTestResult(summary),
+    details: { kind: 'test_run', summary },
+  };
+}
+
 /**
  * Adapts ActionGate + ConfirmationManager to the pipeline's confirmation seam. It owns no state:
  * pending status and prompts always come from the ConfirmationManager.
@@ -24,7 +46,21 @@ export class GateConfirmationController implements ConfirmationController {
   public constructor(
     private readonly gate: Pick<ActionGate, 'reply' | 'confirm' | 'decline'>,
     private readonly confirmations: Pick<ConfirmationManager, 'pending'>,
+    /**
+     * Told, once per request, how a confirmation ended (ran, declined, cancelled or dropped). It is
+     * how an agent-originated request reaches its `action_result`. Optional and observe-only: it
+     * cannot change the outcome, and an error inside it is swallowed.
+     */
+    private readonly onResolved?: GateResolutionObserver,
   ) {}
+
+  private notify(resolution: GateResolution): void {
+    try {
+      this.onResolved?.(resolution);
+    } catch {
+      // An observer must never break a confirmation.
+    }
+  }
 
   public isPending(): boolean {
     return this.confirmations.pending() !== null;
@@ -71,6 +107,14 @@ export class GateConfirmationController implements ConfirmationController {
     while (this.confirmations.pending()?.action.type === 'RUN_TESTS') {
       const outcome = await this.gate.decline();
       next = outcome.kind === 'declined' ? outcome.next : null;
+      // The request ended because the command is not configured, not because the user declined.
+      if (outcome.kind === 'declined') {
+        this.notify({
+          origin: outcome.origin,
+          correlationId: outcome.correlationId,
+          result: notConfiguredResult(),
+        });
+      }
     }
     const message = formatTestResult(notConfiguredSummary());
     return next === null ? message : `${message} ${next.prompt}`;
@@ -88,6 +132,7 @@ export class GateConfirmationController implements ConfirmationController {
         return outcome.text;
       case 'executed':
       case 'declined': {
+        this.notify({ origin: outcome.origin, correlationId: outcome.correlationId, result: outcome.result });
         const result = formatActionResult(outcome.result);
         return outcome.next === null ? result : `${result} ${outcome.next.prompt}`;
       }

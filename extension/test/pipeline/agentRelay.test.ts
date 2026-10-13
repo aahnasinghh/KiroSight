@@ -138,7 +138,10 @@ describe('local-first relay: online agent-routed text', () => {
 
     expect(gateway.calls).toHaveLength(1);
     expect(gateway.calls[0]!.text).toBe('explain this error');
-    expect(gateway.calls[0]!.info).toEqual({ requestId: 1, source: 'voice' });
+    expect(gateway.calls[0]!.info).toMatchObject({ requestId: 1, source: 'voice' });
+    // The relay also says whether it is still the current request; no prepared request for plain text.
+    expect(gateway.calls[0]!.info?.isCurrent?.()).toBe(true);
+    expect(gateway.calls[0]!.info).not.toHaveProperty('prepared');
     expect(transcript.getEntries().map(({ role, text }) => [role, text])).toEqual([
       ['user', 'explain this error'],
       ['kirosight', 'agent: explain this error'],

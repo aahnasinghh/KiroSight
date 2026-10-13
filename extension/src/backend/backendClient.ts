@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION } from '../protocol/constants';
 import type {
   ActionRequest,
+  ActionResultMessage,
   AgentRequest,
   AgentResponse,
   Cancel,
@@ -11,6 +12,7 @@ import type {
   ProtocolMessage,
   SpeechAudio,
   TranscriptionResult,
+  WireActionResult,
 } from '../protocol/messages';
 import { validateProtocolMessage } from '../protocol/validators';
 import { err, ok, type Result } from '../util/result';
@@ -318,6 +320,31 @@ export class BackendClient {
         settle(err(clientError('not_connected', 'The request could not be sent.')));
       }
     });
+  }
+
+  /**
+   * Tells the backend what the extension did with an action it proposed (Req 5.4, 5.5, 5.11).
+   * Returns false, having sent nothing, when the connection is not usable or the message does not
+   * validate. An action_result is never queued and never replayed after a reconnect: it describes
+   * one decision about one live request.
+   */
+  public sendActionResult(replyTo: string, result: WireActionResult): boolean {
+    if (!this.isUsable()) return false;
+    const message: ActionResultMessage = {
+      version: PROTOCOL_VERSION,
+      type: 'action_result',
+      replyTo,
+      result,
+    };
+    const serialized = this.serialize(message);
+    if (serialized === undefined) return false;
+    try {
+      this.requireSocket().send(serialized);
+      return true;
+    } catch {
+      this.logger?.warn('Action result could not be sent');
+      return false;
+    }
   }
 
   /**

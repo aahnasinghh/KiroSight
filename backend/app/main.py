@@ -22,14 +22,17 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from app.agent.stub_agent import AgentResponder, StubAgent
-from app.config import load_config
+from app.agent.agent_service import AgentSelection, select_agent
+from app.agent.stub_agent import AgentResponder
+from app.config import ConfigError, load_config, resolve_llm_choice
 from app.logging_utils import RedactingFilter, format_metadata, redact
 from app.protocol.messages import (
     PROTOCOL_VERSION,
     ActionResultMessage,
     AgentRequest,
+    AgentResponse,
     Cancel,
+    Capabilities,
     ErrorCode,
     ErrorMessage,
     Hello,
@@ -37,7 +40,7 @@ from app.protocol.messages import (
     dump_message,
 )
 from app.protocol.validators import ProtocolValidationError, parse_message
-from app.session import DuplicateRequestError, Session
+from app.session import STUB_CAPABILITIES, DuplicateRequestError, Session
 
 __all__ = ["WS_MAX_SIZE_BYTES", "app", "create_app", "run"]
 
@@ -90,11 +93,17 @@ def _turn_text(request: AgentRequest) -> str:
 class Connection:
     """State and logic for one ``/ws`` connection."""
 
-    def __init__(self, websocket: WebSocket, agent: AgentResponder, token: str | None) -> None:
+    def __init__(
+        self,
+        websocket: WebSocket,
+        agent: AgentResponder,
+        token: str | None,
+        capabilities: Capabilities = STUB_CAPABILITIES,
+    ) -> None:
         self._websocket = websocket
         self._agent = agent
         self._token = token
-        self.session = Session()
+        self.session = Session(capabilities)
         self._send_lock = asyncio.Lock()  # one writer at a time: agent tasks finish independently
         self._closed = False
 
@@ -253,10 +262,19 @@ class Connection:
 
     async def _run_agent(self, request: AgentRequest) -> None:
         try:
-            response = await self._agent.respond(request)
+            # The agent service uses the session's recent turns as context; simpler responders
+            # (the Milestone 6 stub, test doubles) take only the request.
+            with_history = getattr(self._agent, "respond_with_history", None)
+            if with_history is not None:
+                response = await with_history(request, self.session.history)
+            else:
+                response = await self._agent.respond(request)
             if await self.send(response):
-                self.session.add_turn(_turn_text(request), response.speech)
-                self._log("agent task completed", id=request.id)
+                if isinstance(response, AgentResponse):
+                    self.session.add_turn(_turn_text(request), response.speech)
+                    self._log("agent task completed", id=request.id)
+                else:  # an ErrorMessage: nothing is added to the history
+                    self._log("agent task answered with an error", id=request.id, code=response.code)
         except asyncio.CancelledError:
             raise  # cancelled work sends nothing
         except Exception as error:
@@ -266,13 +284,31 @@ class Connection:
             )
 
 
-def create_app(*, agent: AgentResponder | None = None, auth_token: str | None = None) -> FastAPI:
-    """Build the app. ``agent`` and ``auth_token`` are injectable; defaults are production-safe."""
-    responder: AgentResponder = agent if agent is not None else StubAgent()
+def create_app(
+    *,
+    agent: AgentResponder | None = None,
+    auth_token: str | None = None,
+    capabilities: Capabilities | None = None,
+) -> FastAPI:
+    """Build the app. ``agent``, ``capabilities`` and ``auth_token`` are injectable.
+
+    Without an injected ``agent`` the client is chosen by ``KIROSIGHT_LLM`` (``stub``, the default,
+    or ``bedrock``) the first time a connection needs it, which is after startup has loaded ``.env``.
+    ``hello_ack`` reports the capabilities of whichever agent is in use.
+    """
+    chosen: list[AgentSelection] = []
+
+    def current() -> tuple[AgentResponder, Capabilities]:
+        if agent is not None:
+            return agent, capabilities if capabilities is not None else STUB_CAPABILITIES
+        if not chosen:
+            chosen.append(select_agent(resolve_llm_choice(), load_config()))
+        return chosen[0].agent, chosen[0].capabilities
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         load_config()  # loads .env (process env wins) and refuses a non-loopback host
+        resolve_llm_choice()  # fail at startup, not on the first connection, for an unknown value
         yield
 
     application = FastAPI(title="KiroSight backend", lifespan=lifespan)
@@ -288,8 +324,14 @@ def create_app(*, agent: AgentResponder | None = None, auth_token: str | None = 
         if "origin" in websocket.headers:
             await websocket.close(code=CLOSE_POLICY_VIOLATION)
             return
+        try:
+            responder, reported = current()
+        except ConfigError:
+            logger.error("agent configuration is invalid")
+            await websocket.close(code=CLOSE_INTERNAL_ERROR)
+            return
         await websocket.accept()
-        await Connection(websocket, responder, _configured_token(auth_token)).serve()
+        await Connection(websocket, responder, _configured_token(auth_token), reported).serve()
 
     return application
 

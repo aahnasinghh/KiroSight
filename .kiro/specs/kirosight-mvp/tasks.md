@@ -477,27 +477,27 @@ Scope guardrails taken from the approved spec:
     - Implement `agent/bedrock_service.py`: `BedrockLLMClient` using boto3 `bedrock-runtime` `converse` with a forced `respond` tool whose schema is `AgentResponse`, run in a worker thread with a 20 s read timeout and at most one retry on throttling. Read `AWS_*` and `BEDROCK_MODEL_ID` from the environment and make no call when a credential is missing (naming it in the error). No other provider is referenced.
     - _Requirements: 13.1, 13.2, 13.3, 17.1, 17.5_
 
-  - [ ] 7.8 Implement AgentService and integrate it into the backend
+  - [x] 7.8 Implement AgentService and integrate it into the backend
     - Implement `agent/agent_service.py`: orchestrate prompt, `LLMClient` call and parser; map any failure to an `error_message` (`BEDROCK_UNAVAILABLE`, `CREDENTIAL_MISSING`, `BEDROCK_INVALID_RESPONSE`) with no action and no retry against another provider; support `kind='utterance'` and `kind='summarize_test_run'`. Replace the stub agent in `main.py`, select the real or stub client by configuration, and report `capabilities.bedrock` in `hello_ack`.
     - _Requirements: 7.5, 12.3, 12.6, 13.3, 13.4_
 
-  - [ ]* 7.9 Write agent orchestration tests
+  - [x]* 7.9 Write agent orchestration tests
     - With a fake `LLMClient`: a Bedrock failure yields `BEDROCK_UNAVAILABLE` and no second provider is attempted; a valid output passes through; an invalid output yields a safe error with no action; a `summarize_test_run` request is grounded in the bounded summary; the result respects the 5-sentence limit.
     - _Requirements: 7.5, 12.3, 13.2, 13.3, 13.4_
 
-  - [ ] 7.10 Implement extension-side explanation request building
+  - [x] 7.10 Implement extension-side explanation request building
     - Build the `agent_request` for "explain this error", "explain this function" and "explain the selection": choose the focus diagnostic (at the cursor, otherwise the first in the file), use the enclosing symbol or `DIAGNOSTIC_WINDOW_RADIUS` lines for a diagnostic, and the symbol or selection for code. Report locally, without calling the backend, that no matching diagnostic was found, or that no function or selection is available to explain. Show a stated error when the backend reports a reasoning failure.
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
 
-  - [ ] 7.11 Implement agent-originated action handling and action_result
+  - [x] 7.11 Implement agent-originated action handling and action_result
     - Pass every action carried by an `agent_response` or `action_request` through `validateAction` and the `ActionGate` (registry risk decides; `confirmationRequired` can only add a confirmation). Send exactly one `action_result` back to the backend for every agent-originated action, with status `ok`, `failed`, `declined`, `not_permitted`, `needs_clarification` or `not_configured`. Locally originated actions send none. After a failed test run, send a bounded `summarize_test_run` request when the backend is available and append its summary, falling back to the deterministic text otherwise.
     - _Requirements: 5.2, 5.3, 5.4, 5.5, 5.9, 5.10, 5.11, 7.5_
 
-  - [ ]* 7.12 Write integration tests for agent-originated actions
+  - [x]* 7.12 Write integration tests for agent-originated actions
     - With a fake backend: `RUN_TESTS` with `confirmationRequired: false` still asks for confirmation; a `safe` action with the flag true asks, and with the flag false or absent does not; decline, cancel, an unknown action name and an unconfigured command each produce exactly one `action_result` with the matching status; a locally originated action produces none.
     - _Requirements: 5.2, 5.3, 5.4, 5.5, 5.9, 5.10, 5.11_
 
-  - [ ] 7.13 Wire reasoning into the extension
+  - [x] 7.13 Wire reasoning into the extension
     - Hook the explanation builder (task 7.10) and the action handling (task 7.11) into the pipeline and `extension.ts`. Show the F1 (backend offline), F2 (Bedrock unavailable) and F6 (invalid response) messages in the transcript. Update `docs/env-vars.md` and `.env.example` for the Bedrock variables and document how to use the stub client.
     - _Requirements: 10.5, 12.3, 13.4_
 
@@ -508,7 +508,7 @@ Scope guardrails taken from the approved spec:
   - Layer voice input on the text pipeline behind a `VoiceInput` interface. Complete-clip STT, a 60 s capture cap, and the same path as typed input. Voice never blocks typed commands or the local features.
   - _Requirements: 9.1, 9.2, 9.3, 10.1, 10.3, 10.4, 10.5, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 19.5, 19.6, 19.7, 19.8_
 
-  - [ ] 8.1 Spike D: microphone capture in a Kiro webview (time box: 60 minutes)
+  - [x] 8.1 Spike D: microphone capture in a Kiro webview (time box: 60 minutes)
     - Write a throwaway webview that calls `getUserMedia` and `MediaRecorder`, records a 3 to 5 second clip after a permission grant, and sends it as base64 through `postMessage` to the extension host.
     - Pass criterion: the host receives at least one audio sample of non-zero length within 5 seconds of the webview starting capture, and the bytes play back correctly. Webview capture counts as unreliable if permission is denied, capture is unavailable, or that first sample does not arrive within 5 seconds.
     - Fallback decision: switch the `VoiceInput` implementation to `BackendLocalVoiceInput`, or run the demo typed-only with TTS playback. The outcome only switches the `VoiceInput` implementation and never changes routing, confirmation or accessibility logic.

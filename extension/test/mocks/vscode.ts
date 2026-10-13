@@ -364,6 +364,13 @@ export const vscodeMockState = {
   notifications: [] as string[],
   inputBoxResponses: [] as Array<string | undefined>,
   inputBoxCalls: [] as unknown[],
+  /** What executeCommand resolves with, by command id (for example the document symbol provider). */
+  commandResults: new Map<string, unknown>(),
+};
+
+/** The slice of vscode.SymbolKind the extension reads: number to name and name to number. */
+export const SymbolKind: Record<string | number, string | number> = {
+  5: 'Class', Class: 5, 11: 'Function', Function: 11,
 };
 
 export function resetVscodeMock(): void {
@@ -374,6 +381,7 @@ export function resetVscodeMock(): void {
   vscodeMockState.notifications.length = 0;
   vscodeMockState.inputBoxResponses.length = 0;
   vscodeMockState.inputBoxCalls.length = 0;
+  vscodeMockState.commandResults.clear();
 }
 
 export const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 } as const;
@@ -502,9 +510,9 @@ export const window = {
 };
 
 export const commands = {
-  executeCommand(command: string): Promise<undefined> {
+  executeCommand(command: string, ..._args: unknown[]): Promise<unknown> {
     vscodeMockState.executedCommands.push(command);
-    return Promise.resolve(undefined);
+    return Promise.resolve(vscodeMockState.commandResults.get(command));
   },
   registerCommand(command: string, handler: CommandHandler): DisposableLike {
     vscodeMockState.registeredCommands.set(command, handler);

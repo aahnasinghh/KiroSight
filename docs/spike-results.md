@@ -109,6 +109,53 @@ Findings:
 
 The harness and fixtures are under `spikes/trusted-test-command-windows/` (`run.js`, `fixtures/normal.js`, `fixtures/decoy.js`, `fixtures/tree-parent.js`, `fixtures/tree-child.js`). Run with `node run.js` from that folder. No generated output or PID files are kept.
 
+## Spike D — Microphone Capture in a Kiro Webview
+
+Task: 8.1
+Time box: 60 minutes
+Result: **OFFLINE HARNESS PASS / LIVE FALLBACK CONFIRMED**
+
+Environment:
+- Windows microphone permissions were checked and enabled.
+- The machine reports a microphone array available.
+- Kiro Extension Development Host was used for the manual test.
+
+What was built (throwaway, `spikes/webview-mic/`):
+- A Kiro extension with **KiroSight: Microphone Capture (Spike D)**. It opens a webview with one button. Pressing it calls `getUserMedia({ audio: true })`, records 4 seconds with `MediaRecorder`, and sends only `postMessage` messages to the host: `mic_state`, `capture_start`, `first_sample`, and `audio_clip` as base64.
+- The host judges the attempt against the pass criterion, writes a successful clip to `%TEMP%\\kirosight-spike-d\\` for playback, and reports the verdict in the `KiroSight Spike D` output channel.
+- The webview uses a locked-down `default-src 'none'` CSP, opens no network connection, holds no credentials, and has a keyboard-operable button with a live status region.
+- No production code was written. Nothing in `extension/` or `backend/` changed.
+
+Offline validation:
+- `node smoke-test.js` in `spikes/webview-mic/`: **18/18 checks passed**.
+- The offline checks cover the five-second first-sample boundary, non-zero sample size, denied/unavailable/prompt states, invalid clips, host-clock timing, message filtering, CSP, and the fake-VS Code command.
+- The extension suite remained at **1525 passed across 91 files**.
+
+Actual Kiro Development Host test:
+- The Spike D webview opened successfully.
+- `Record 4 seconds` was activated.
+- The webview displayed: `Microphone not available: NotAllowedError.`
+- Windows microphone permissions were enabled, but capture was still denied inside the Kiro webview.
+- The `KiroSight Spike D` output channel was selected but remained empty.
+- No non-zero audio sample was captured.
+- No playable audio clip was produced, so playback could not be confirmed.
+
+Pass criterion and result:
+- The host did not receive a non-zero audio sample within five seconds, and playback could not be verified.
+- The permission/capture failure triggered the documented unreliable-capture fallback condition.
+- **Official result: FALLBACK.**
+
+Decision:
+- Select **`BackendLocalVoiceInput`** as the preferred fallback architecture for Milestone 8.
+- This does not claim that `BackendLocalVoiceInput` works; it is the next approach to implement and test.
+- If backend-local microphone capture is also unavailable, preserve a typed-only demo with TTS as the contingency.
+- The fallback changes only the VoiceInput implementation. Routing, confirmation, accessibility, typed input and deterministic local features remain unchanged.
+
+### Spike D acceptance and scope notes
+- Task 8.1 is a throwaway spike and does not implement production microphone capture.
+- The result is recorded here for Task 8.2's documented implementation choice.
+- No AWS or Deepgram request was made, and no audio was sent to an external service.
+
 ### Spike E — Amazon Bedrock Converse
 
 Date: 2026-10-12

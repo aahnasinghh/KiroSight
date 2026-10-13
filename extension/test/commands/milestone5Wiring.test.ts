@@ -164,7 +164,7 @@ describe('Milestone 5 wiring', () => {
       expect(source.match(new RegExp(`new ${constructor}\\(`, 'g'))).toHaveLength(1);
     }
     expect(source).toContain('confirmations: confirmationManager');
-    expect(source).toContain('new GateConfirmationController(actionGate, confirmationManager)');
+    expect(source).toContain('new GateConfirmationController(\n    actionGate,\n    confirmationManager,');
     expect(source).toContain('testRunner,\n    testRunStore,');
     expect(source).toContain('testRuns: testRunStore');
     expect(source).not.toMatch(/testRunner\.run\(|actionGate\.submit|actionExecutor\.execute/);

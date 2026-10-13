@@ -97,11 +97,11 @@ def test_dotenv_is_loaded_into_the_real_environment_without_overriding(
 def test_missing_credentials_are_reported_by_name() -> None:
     config = load({})
     assert config.missing_credentials("deepgram") == ("DEEPGRAM_API_KEY",)
+    # Bedrock needs a Bedrock API key OR the access-key pair; the region and model ID have defaults.
     assert config.missing_credentials("bedrock") == (
-        "AWS_REGION",
+        "AWS_BEARER_TOKEN_BEDROCK",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
-        "BEDROCK_MODEL_ID",
     )
 
 
@@ -115,7 +115,7 @@ def test_present_credentials_are_omitted_and_blank_counts_as_missing() -> None:
         }
     )
     assert config.missing_credentials("deepgram") == ()
-    assert config.missing_credentials("bedrock") == ("AWS_SECRET_ACCESS_KEY", "BEDROCK_MODEL_ID")
+    assert config.missing_credentials("bedrock") == ("AWS_SECRET_ACCESS_KEY",)
 
 
 def test_optional_credentials_never_block_startup_or_appear_as_missing() -> None:

@@ -1,6 +1,8 @@
+import { parseExplainIntent, type ExplainTarget } from '../intent/explainIntent';
 import type { LocalIntent, RouteResult } from '../intent/intentTypes';
 import { route as defaultRoute } from '../intent/localIntentRouter';
 import type { HostToWebviewMessage } from '../protocol/bridgeMessages';
+import type { AgentRequest } from '../protocol/messages';
 import type { TranscriptSource, TranscriptStore } from '../transcript/transcriptStore';
 import {
   createViewModel,
@@ -47,6 +49,37 @@ export interface AgentRelayInfo {
   /** The RequestTracker id of this submission; unique and increasing in arrival order. */
   readonly requestId: number;
   readonly source: TranscriptSource;
+  /**
+   * For an explanation request (Task 7.10): the request the pipeline already built from the IDE
+   * state, with a placeholder id. The gateway sends it as is, with its own id. Absent otherwise.
+   */
+  readonly prepared?: AgentRequest;
+  /**
+   * False once the user has interrupted or superseded this submission. The gateway checks it
+   * before acting on an answer, so an interrupted request can never run or queue an action.
+   */
+  readonly isCurrent?: () => boolean;
+}
+
+/** The placeholder id on a prepared request; the gateway replaces it with the relay's own id. */
+const PREPARED_REQUEST_ID = 'prepared';
+
+export type PreparedExplanation =
+  | { readonly status: 'ready'; readonly request: AgentRequest }
+  | { readonly status: 'not_available'; readonly message: string };
+
+/**
+ * Builds explanation requests from the IDE state (ExplanationRequestBuilder satisfies this). It is
+ * asked only for the three explanation phrases, and reports locally, with no backend involved, when
+ * there is nothing to explain.
+ */
+export interface ExplanationPreparer {
+  build(input: {
+    readonly target: ExplainTarget;
+    readonly id: string;
+    readonly utterance: string;
+    readonly source: TranscriptSource;
+  }): Promise<PreparedExplanation>;
 }
 
 /**
@@ -102,6 +135,8 @@ export interface InputPipelineDeps {
   readonly transcript: TranscriptStore;
   readonly localIntents: LocalIntentRunner;
   readonly agent?: AgentGateway;
+  /** Builds the request for "explain this error / function / selection". Optional. */
+  readonly explainer?: ExplanationPreparer;
   readonly interceptor?: PendingConfirmationInterceptor;
   /** Pending-confirmation handling; when present it also serves as the interceptor. */
   readonly confirmation?: ConfirmationController;
@@ -191,6 +226,21 @@ export class InputPipeline {
   ): Promise<SubmitAckStatus> {
     if (ticket !== undefined) await ticket.previous;
 
+    // "Explain this error / function / selection" is prepared from the IDE state first. When there
+    // is nothing to explain, that is reported here, with or without a backend (Req 12.4, 12.5).
+    let prepared: AgentRequest | undefined;
+    const target = this.deps.explainer === undefined ? null : parseExplainIntent(text);
+    if (target !== null && this.deps.explainer !== undefined) {
+      const built = await this.deps.explainer.build({ target, id: PREPARED_REQUEST_ID, utterance: text, source });
+      if (built.status === 'not_available') {
+        ticket?.release();
+        this.respond(built.message);
+        this.publish(this.restingStatus());
+        return 'handled';
+      }
+      prepared = built.request;
+    }
+
     if (this.agent.isAvailable?.() === false) {
       ticket?.release();
       this.reportUnavailable(BACKEND_UNAVAILABLE_TEXT);
@@ -200,7 +250,12 @@ export class InputPipeline {
     const requestId = this.tracker.begin();
     // respond() is invoked synchronously here, so the gateway sees calls in arrival order. The
     // line is released as soon as the request has been handed over, not when it is answered.
-    const pending = this.agent.respond(text, { requestId, source });
+    const pending = this.agent.respond(text, {
+      requestId,
+      source,
+      isCurrent: () => this.tracker.isCurrent(requestId),
+      ...(prepared === undefined ? {} : { prepared }),
+    });
     ticket?.release();
 
     const result = await pending;
@@ -212,8 +267,20 @@ export class InputPipeline {
       return 'not_handled';
     }
     this.respond(result.text);
-    this.publish(result.status === 'handled' ? 'idle' : 'error');
+    // A proposed action may have left a confirmation pending, and the status must say so.
+    this.publish(result.status === 'handled' ? this.restingStatus() : 'error');
     return result.status;
+  }
+
+  /**
+   * Adds a response that no submission is waiting for (an action the backend pushed, or a test
+   * summary that arrives later) to the transcript, and refreshes the view. It is the same
+   * transcript entry and the same view update every other response uses.
+   */
+  public announce(text: string): void {
+    if (text.trim() === '') return;
+    this.respond(text);
+    this.publish(this.restingStatus());
   }
 
   private reportUnavailable(message: string): void {

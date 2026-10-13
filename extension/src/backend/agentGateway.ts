@@ -8,6 +8,7 @@ import {
 } from '../pipeline/inputPipeline';
 import { PROTOCOL_VERSION } from '../protocol/constants';
 import type { AgentRequest, AgentResponse } from '../protocol/messages';
+import { describeReasoningFailure } from '../response/explanationMessages';
 import type { Result } from '../util/result';
 import type { BackendClientError, ConnectionState } from './backendClient';
 
@@ -15,10 +16,11 @@ import type { BackendClientError, ConnectionState } from './backendClient';
  * The real AgentGateway for the InputPipeline: it turns agent-routed text plus bounded IDE
  * context into one `agent_request` and hands it to the BackendClient.
  *
- * It only transports. The `action` in an `agent_response` is deliberately dropped here: action
- * validation, confirmation and execution belong to Task 7.11, so receiving a response can never
- * cause a side effect. It never opens a connection, never queues a request for later and never
- * touches the socket or its raw state.
+ * It only transports. It never looks at the `action` in an `agent_response`: with no `actions`
+ * option the action is dropped (receiving a response can then cause no side effect), and with one
+ * the answer is handed to the action handler, which validates it, applies the confirmation gate
+ * and reports back (Task 7.11). It never opens a connection, never queues a request for later and
+ * never touches the socket or its raw state.
  */
 
 export const BACKEND_REQUEST_FAILED_TEXT =
@@ -40,14 +42,28 @@ export interface AgentContextSource {
   getContext(): Promise<IDEContext>;
 }
 
+/**
+ * Receives the action an answer proposes (AgentActionHandler satisfies this). It validates the
+ * action, applies the confirmation gate and sends the one `action_result`; the gateway only hands
+ * the answer over and adds the returned text to the reply.
+ */
+export interface AgentResponseActions {
+  handleAgentResponse(response: AgentResponse): Promise<{ readonly text: string }>;
+  /** The request was interrupted before its answer arrived; the action is not considered. */
+  interrupted(response: AgentResponse): void;
+}
+
 export interface BackendAgentGatewayOptions {
   readonly client: AgentGatewayClient;
   readonly context: AgentContextSource;
+  /** Without it an answer's action is ignored, as in Milestone 6. */
+  readonly actions?: AgentResponseActions;
 }
 
 export class BackendAgentGateway implements AgentGateway {
   private readonly client: AgentGatewayClient;
   private readonly context: AgentContextSource;
+  private readonly actions: AgentResponseActions | undefined;
   /** Settles when the previous request has been handed to the client (not when it is answered). */
   private sendTail: Promise<void> = Promise.resolve();
   private fallbackIds = 0;
@@ -56,6 +72,7 @@ export class BackendAgentGateway implements AgentGateway {
   public constructor(options: BackendAgentGatewayOptions) {
     this.client = options.client;
     this.context = options.context;
+    this.actions = options.actions;
   }
 
   /** Only a completed handshake counts. `connecting`, `disconnected` and `incompatible` do not. */
@@ -82,18 +99,22 @@ export class BackendAgentGateway implements AgentGateway {
   ): Promise<AgentGatewayResult> {
     let answer: Promise<Result<AgentResponse, BackendClientError>>;
     try {
-      const context = await this.context.getContext();
+      const id = info === undefined ? `gw-${(this.fallbackIds += 1)}` : `req-${info.requestId}`;
+      // An explanation arrives already built from the IDE state; anything else gathers its context.
+      const context = info?.prepared === undefined ? await this.context.getContext() : undefined;
       await prior;
       if (!this.isAvailable()) return unavailable();
 
-      const request: AgentRequest = {
-        version: PROTOCOL_VERSION,
-        type: 'agent_request',
-        id: info === undefined ? `gw-${(this.fallbackIds += 1)}` : `req-${info.requestId}`,
-        kind: 'utterance',
-        utterance: info === undefined ? { text } : { text, source: info.source },
-        context: toWireContext(context),
-      };
+      const request: AgentRequest = info?.prepared !== undefined
+        ? { ...info.prepared, id }
+        : {
+          version: PROTOCOL_VERSION,
+          type: 'agent_request',
+          id,
+          kind: 'utterance',
+          utterance: info === undefined ? { text } : { text, source: info.source },
+          context: toWireContext(context!),
+        };
       // The frame is written synchronously inside requestAgent, so the next request may be
       // handed over right away while this one is still waiting for its answer.
       answer = this.client.requestAgent(request);
@@ -103,7 +124,34 @@ export class BackendAgentGateway implements AgentGateway {
       release();
     }
 
-    return mapResult(await answer);
+    const settled = await answer;
+    const mapped = mapResult(settled);
+    return settled.ok ? this.withAction(mapped, settled.value, info) : mapped;
+  }
+
+  /**
+   * Hands the answer's action to the action handler and adds what it reports to the reply. The
+   * action is never looked at here. If the user interrupted the request in the meantime the action
+   * is not considered at all, so a late answer can never run or queue anything.
+   */
+  private async withAction(
+    mapped: AgentGatewayResult,
+    response: AgentResponse,
+    info: AgentRelayInfo | undefined,
+  ): Promise<AgentGatewayResult> {
+    if (this.actions === undefined) return mapped;
+    if (info?.isCurrent?.() === false) {
+      this.actions.interrupted(response);
+      return mapped;
+    }
+    try {
+      const outcome = await this.actions.handleAgentResponse(response);
+      if (outcome.text === '') return mapped;
+      const spoke = response.speech.trim() !== '';
+      return { ...mapped, text: spoke ? `${mapped.text} ${outcome.text}` : outcome.text };
+    } catch {
+      return mapped;
+    }
   }
 }
 
@@ -123,6 +171,12 @@ function mapResult(result: Result<AgentResponse, BackendClientError>): AgentGate
       status: 'handled',
       text: speech.trim() === '' ? BACKEND_EMPTY_RESPONSE_TEXT : speech,
     };
+  }
+  if (result.error.kind === 'backend_error' && result.error.backendCode !== undefined) {
+    // A reasoning failure (Req 12.3, design F2 and F6) gets a stated error. The text is fixed:
+    // the backend's own message is never copied, and other backend codes stay generic.
+    const stated = describeReasoningFailure(result.error.backendCode, result.error.recoverable);
+    if (stated !== null) return { status: 'not_handled', text: stated };
   }
   switch (result.error.kind) {
     case 'not_connected':
