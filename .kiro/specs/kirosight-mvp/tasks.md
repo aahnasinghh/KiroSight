@@ -446,34 +446,34 @@ Scope guardrails taken from the approved spec:
   - Add the `AgentService` behind a mockable `LLMClient`, the Bedrock Converse call with a forced tool, strict output validation, explanation and test-failure summaries, and handling of agent-proposed actions with `action_result` replies. Amazon Bedrock is the only LLM provider.
   - _Requirements: 5.4, 5.5, 5.9, 5.10, 5.11, 7.5, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 13.1, 13.2, 13.3, 13.4_
 
-  - [ ] 7.1 Spike E: minimal Bedrock request from Python (time box: 45 minutes)
+  - [x] 7.1 Spike E: minimal Bedrock request from Python (time box: 45 minutes)
     - Write a throwaway script that makes one `converse` call with a forced `respond` tool, using the planned credentials, model ID and region.
     - Pass criterion: the returned tool input parses as an `AgentResponse`-shaped object with Pydantic (`extra="forbid"`).
     - Fallback decision: choose another enabled model or region, or request access, and record the chosen `BEDROCK_MODEL_ID` and region. If Bedrock cannot be reached in time, demo the stub `LLMClient` behind the same interface. No second LLM provider is added.
     - Must NOT implement the real Bedrock client. Record the outcome in `docs/spike-results.md`. This spike can also be done early, in parallel with Milestone 1, if time allows.
     - _Requirements: 13.1, 13.2_
 
-  - [ ] 7.2 Implement the LLMClient seam and a stub client
+  - [x] 7.2 Implement the LLMClient seam and a stub client
     - Implement `agent/llm_client.py`: the `LLMClient` protocol (`async def respond(request) -> RawModelOutput`), the `LLMRequest` and `RawModelOutput` types, and a `StubLLMClient` returning canned valid responses so the demo can run if Bedrock is unreachable.
     - _Requirements: 13.2, 13.3_
 
-  - [ ] 7.3 Implement the agent response parser
+  - [x] 7.3 Implement the agent response parser
     - Implement `agent/response_parser.py`: `parse_agent_output(raw)` validates the shape with Pydantic, checks the action against `allowlist.py`, limits speech to 5 sentences and 600 characters, and returns either an `AgentResponse` or a safe failure. It never raises and never returns an action outside the allow-list.
     - _Requirements: 5.5, 5.6, 7.5, 12.6_
 
-  - [ ]* 7.4 Write property test for safe agent output
+  - [x]* 7.4 Write property test for safe agent output
     - **Property 22: Agent output never yields an unsafe action**
     - **Validates: Requirements 5.5, 5.6, 13.4**
 
-  - [ ]* 7.5 Write property test for the sentence limit
+  - [x]* 7.5 Write property test for the sentence limit
     - **Property 23: Spoken responses respect the sentence limit**
     - **Validates: Requirements 7.5, 12.6**
 
-  - [ ] 7.6 Implement prompt construction
+  - [x] 7.6 Implement prompt construction
     - Implement `agent/prompt.py`: build the system prompt and user content from the utterance, bounded context, diagnostics, the allowed action definitions from `allowlist.py` and the last few turns. Code, diagnostics and test output are presented as untrusted text. Instruct the model to keep answers to 5 sentences or fewer, offer more detail, and answer with an allow-listed action only.
     - _Requirements: 12.1, 12.2, 12.6_
 
-  - [ ] 7.7 Implement the Bedrock client
+  - [x] 7.7 Implement the Bedrock client
     - Implement `agent/bedrock_service.py`: `BedrockLLMClient` using boto3 `bedrock-runtime` `converse` with a forced `respond` tool whose schema is `AgentResponse`, run in a worker thread with a 20 s read timeout and at most one retry on throttling. Read `AWS_*` and `BEDROCK_MODEL_ID` from the environment and make no call when a credential is missing (naming it in the error). No other provider is referenced.
     - _Requirements: 13.1, 13.2, 13.3, 17.1, 17.5_
 

@@ -16,7 +16,8 @@ Copy `.env.example` to a local `.env` file only when backend work begins. Local 
 | `AWS_ACCESS_KEY_ID` | Access-key identifier used by the standard AWS credential chain when static or temporary credentials are selected. |
 | `AWS_SECRET_ACCESS_KEY` | Secret access key paired with `AWS_ACCESS_KEY_ID`. This value must never be logged or committed. |
 | `AWS_SESSION_TOKEN` | Session token used with temporary AWS credentials; omitted when the selected AWS credential source does not require one. |
-| `BEDROCK_MODEL_ID` | Identifier of the Amazon Bedrock model used for semantic reasoning through the Converse API. |
+| `AWS_BEARER_TOKEN_BEDROCK` | Amazon Bedrock API key, read by the AWS SDK itself as an alternative to the access-key pair. The backend only checks that it is set and never reads, logs or forwards the value. |
+| `BEDROCK_MODEL_ID` | Identifier of the Amazon Bedrock model used for semantic reasoning through the Converse API. Defaults to `amazon.nova-lite-v1:0`; the region defaults to `us-east-1` when `AWS_REGION` is unset. |
 
 ## Ownership and failure behavior
 

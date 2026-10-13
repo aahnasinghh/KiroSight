@@ -108,3 +108,39 @@ Findings:
 ### Spike C disposable files
 
 The harness and fixtures are under `spikes/trusted-test-command-windows/` (`run.js`, `fixtures/normal.js`, `fixtures/decoy.js`, `fixtures/tree-parent.js`, `fixtures/tree-child.js`). Run with `node run.js` from that folder. No generated output or PID files are kept.
+
+### Spike E — Amazon Bedrock Converse
+
+Date: 2026-10-12
+Task: 7.1
+Time box: 45 minutes
+Result: **OFFLINE PASS / LIVE BLOCKED / FALLBACK SELECTED**
+
+Configuration:
+- AWS Region: `us-east-1`
+- Bedrock Model ID: `amazon.nova-lite-v1:0`
+- boto3: `1.43.111`
+- Authentication source: `AWS_BEARER_TOKEN_BEDROCK` (value not recorded)
+- Spike file: `backend/spikes/bedrock_converse.py`
+
+Offline validation:
+- The Converse request uses exactly one forced `respond` tool through `toolChoice`.
+- `SpikeToolInput` uses Pydantic v2 `extra="forbid"`.
+- A valid synthetic `respond` `toolUse` response passes strict `AgentResponse` validation.
+- Malformed and unsafe synthetic responses are rejected, including unknown fields, missing fields, text-only output, wrong tool names, invalid actions and unsafe action parameters.
+- All eight action types come from the existing backend allow-list.
+- Offline dry run: **PASS — 24 checks**.
+- The default dry run made zero AWS requests. Synthetic responses did not come from AWS.
+
+Live validation:
+- Live Converse request: **NOT EXECUTED**.
+- AWS Playground result: `ThrottlingException` — too many tokens per day; inference access is currently unavailable.
+- Nova Lite applied inference quotas: 0 requests/minute and 0 tokens/minute.
+- Nova Micro also has zero applied inference quotas.
+- Therefore, no successful live Bedrock inference or forced-tool response has been observed.
+
+Decision:
+- **Fallback selected:** use `StubLLMClient` for development until Bedrock inference access becomes available. The StubLLMClient is not implemented in this spike; it belongs to Task 7.2.
+- Amazon Bedrock remains the only intended production LLM provider; no second provider is added.
+- Production Bedrock integration remains planned.
+- Revisit live Bedrock verification after AWS account access and inference quotas become available.
