@@ -47,6 +47,11 @@ export interface ViewModelInput {
   readonly transcript?: readonly TranscriptEntry[];
   /** Defaults to true only for the 'listening' status kind. */
   readonly listening?: boolean;
+  /**
+   * Plain-text backend connection summary. When present it is appended to the status label, so it
+   * reaches the webview through the existing `status` string and no new bridge field is needed.
+   */
+  readonly backendStatus?: string;
 }
 
 export const STATUS_LABELS: Readonly<Record<StatusKind, string>> = {
@@ -80,8 +85,12 @@ export function createViewModel(input: ViewModelInput = {}): ViewModel {
     ? DEFAULT_VOICE
     : Object.freeze({ ...input.voice });
 
+  const backendStatus = input.backendStatus?.trim() ?? '';
+
   return Object.freeze({
-    status: statusLabel(statusKind),
+    status: backendStatus === ''
+      ? statusLabel(statusKind)
+      : `${statusLabel(statusKind)}. ${backendStatus}`,
     statusKind,
     transcript: copyTranscript(input.transcript ?? []),
     latest: input.latest ?? null,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activate } from '../src/extension';
+import { fakeBackendOverrides } from './mocks/backendOverrides';
 import { Uri, editorMockState, resetEditorMock, resetVscodeMock, vscodeMockState } from './mocks/vscode';
 
 interface DisposableLike {
@@ -9,7 +10,10 @@ interface DisposableLike {
 
 function boot(): DisposableLike[] {
   const subscriptions: DisposableLike[] = [];
-  activate({ subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0]);
+  activate(
+    { subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0],
+    fakeBackendOverrides().overrides,
+  );
   return subscriptions;
 }
 
@@ -26,8 +30,9 @@ describe('extension activation', () => {
     expect(vscodeMockState.registeredCommands.has('kirosight.whereAmI')).toBe(true);
     expect(vscodeMockState.webviewPanels).toHaveLength(0);
     expect(vscodeMockState.outputChannels).toHaveLength(0);
-    // command registrations, panel, the single editor adapter, and the single test runner
-    expect(subscriptions).toHaveLength(4);
+    // command registrations, panel, the single editor adapter, the single test runner, and the
+    // backend connection lifecycle (manager plus its state subscription)
+    expect(subscriptions).toHaveLength(5);
     expect(editorMockState.activeListeners).toHaveLength(1);
   });
 

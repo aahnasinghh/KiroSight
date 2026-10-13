@@ -503,8 +503,12 @@ describe('local-first relay boundaries', () => {
     expect(code).not.toMatch(/ConnectionManager|BackendClient|setPanelOpen|\.connect\(/);
   });
 
-  it('leaves extension wiring and the manifest to Task 6.19', () => {
+  it('leaves the real backend wiring to the composition root (Task 6.19), not the pipeline', () => {
+    // Task 6.16 forbade extension.ts from naming these; Task 6.19 owns that wiring now.
     const extension = read('extension.ts');
-    expect(extension).not.toMatch(/BackendClient|ConnectionManager|BackendAgentGateway/);
+    expect(extension).toContain('new BackendAgentGateway(');
+    expect(stripComments(read('pipeline/inputPipeline.ts'))).not.toMatch(
+      /BackendClient|ConnectionManager|BackendAgentGateway/,
+    );
   });
 });

@@ -359,7 +359,7 @@ Scope guardrails taken from the approved spec:
   - [x] 5.17 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: type "run my tests", read the confirmation prompt, try confirm, decline, cancel and repeat, and read the concise pass and fail summary.
 
-- [ ] 6. Milestone 6: Python backend and mock WebSocket round trip
+- [x] 6. Milestone 6: Python backend and mock WebSocket round trip
   - Introduce the local FastAPI backend, the versioned protocol on both sides with shared fixtures, the WebSocket client in the extension host, and the local-first relay. The backend's agent is a canned stub. Local commands keep working with the backend off.
   - _Requirements: 5.1, 11.1, 11.2, 11.3, 11.4, 17.1, 17.5, 17.6, 19.2, 19.5, 19.9_
 
@@ -423,23 +423,23 @@ Scope guardrails taken from the approved spec:
     - Implement `backend/backendLauncher.ts` and register `kirosight.startBackend`, which spawns the command from the user-scoped `kirosight.backendCommand` setting. A documented manual start remains the default and nothing in Milestones 1 to 5 depends on this.
     - _Requirements: 19.2_
 
-  - [ ] 6.16 Implement the local-first relay
+  - [x] 6.16 Implement the local-first relay
     - Extend the pipeline with a real `AgentGateway`: only agent-routed text is relayed as an `agent_request` (with `toWireContext`), within 500 ms of receipt and in arrival order, and each backend response reaches the webview within 500 ms. Locally handled text is never relayed. When the WebSocket is not open, relay nothing, send the webview `backend_unavailable` within 2 s, return `submit_ack` status `not_handled` so the draft stays in the input, and state which features still work. Append `agent_response` speech to the transcript. Actions carried by `agent_response` are validated and executed in task 7.11.
     - _Requirements: 8.1, 10.4, 19.5, 19.9_
 
-  - [ ]* 6.17 Write property test for relay ordering
+  - [x]* 6.17 Write property test for relay ordering
     - **Property 32: Relay preserves arrival order**
     - **Validates: Requirements 19.5**
 
-  - [ ]* 6.18 Write property test for local-first handling
+  - [x]* 6.18 Write property test for local-first handling
     - **Property 33: Local commands never relay and never depend on the backend**
     - **Validates: Requirements 10.4, 19.5, 19.9**
 
-  - [ ] 6.19 Wire the backend connection into the extension
+  - [x] 6.19 Wire the backend connection into the extension
     - In `extension.ts`, construct `BackendClient` and `ConnectionManager` and connect lazily. Show connection state and capabilities in the view model status text. Read the optional backend token from `SecretStorage` and add a command to set it. Contribute `kirosight.backendUrl` and `kirosight.voice.enabled` settings. Keep the token out of the webview, logs and source.
     - _Requirements: 10.3, 11.4, 17.2, 19.2_
 
-  - [ ] 6.20 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 6.20 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: start the backend, see "connected" with capabilities, and get the canned stub answer to an agent-routed utterance. Confirm local commands still work with the backend stopped.
 
 - [ ] 7. Milestone 7: Bedrock semantic reasoning

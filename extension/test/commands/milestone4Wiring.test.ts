@@ -4,8 +4,9 @@ import { resolve as resolvePath } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activate } from '../../src/extension';
-import { REASONING_NOT_CONNECTED } from '../../src/pipeline/localIntentHandler';
+import { BACKEND_UNAVAILABLE_TEXT } from '../../src/pipeline/inputPipeline';
 import { DEFAULT_VOICE } from '../../src/webview/viewModel';
+import { fakeBackendOverrides } from '../mocks/backendOverrides';
 import { Uri, resetVscodeMock, vscodeMockState, type MockWebviewPanel } from '../mocks/vscode';
 
 interface PostedEntry { seq: number; role: string; text: string; source?: string }
@@ -13,9 +14,16 @@ interface PostedViewState { type: string; statusKind: string; transcript: Posted
 
 function boot(): Array<{ dispose(): void }> {
   const subscriptions: Array<{ dispose(): void }> = [];
-  activate({ subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0]);
+  activate(
+    { subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0],
+    fakeBackendOverrides().overrides,
+  );
   return subscriptions;
 }
+
+/** Messages other than the view_state refresh that a backend connection-state change sends. */
+const nonViewStateMessages = (): unknown[] =>
+  panel().webview.posted.filter((message) => (message as { type: string }).type !== 'view_state');
 
 const command = (name: string) => vscodeMockState.registeredCommands.get(name)!;
 const panel = (): MockWebviewPanel => vscodeMockState.webviewPanels[0];
@@ -41,7 +49,7 @@ describe('Milestone 4 wiring', () => {
 
     expect(vscodeMockState.webviewPanels).toHaveLength(1);
     expect(panel().revealCalls).toEqual([[undefined, false]]);
-    expect(panel().webview.posted).toEqual([{ type: 'focus_input' }]);
+    expect(nonViewStateMessages()).toEqual([{ type: 'focus_input' }]);
   });
 
   it('opens or focuses the panel for kirosight.ask and never uses an input box', async () => {
@@ -53,7 +61,7 @@ describe('Milestone 4 wiring', () => {
 
     expect(vscodeMockState.webviewPanels).toHaveLength(1);
     expect(vscodeMockState.inputBoxCalls).toEqual([]);
-    expect(panel().webview.posted).toEqual([{ type: 'focus_input' }]);
+    expect(nonViewStateMessages()).toEqual([{ type: 'focus_input' }]);
   });
 
   it('routes each direct command through the pipeline, recording typed query and response', async () => {
@@ -88,13 +96,17 @@ describe('Milestone 4 wiring', () => {
   it('sends state to an open panel immediately, before the command finishes', async () => {
     boot();
     await command('kirosight.activate')();
+    // Opening the panel also refreshes the status text with the backend connection state, once the
+    // optional token has been read.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const before = viewStates().length;
 
     const pending = command('kirosight.whereAmI')();
     expect(viewStates().at(-1)).toMatchObject({ statusKind: 'processing' });
 
     await pending;
     expect(viewStates().at(-1)).toMatchObject({ statusKind: 'idle', latest: 'No file is open.' });
-    expect(viewStates().map((state) => state.statusKind)).toEqual(['processing', 'idle']);
+    expect(viewStates().slice(before).map((state) => state.statusKind)).toEqual(['processing', 'idle']);
   });
 
   it('keeps state from commands run while the panel is closed and returns it on ready', async () => {
@@ -145,7 +157,8 @@ describe('Milestone 4 wiring', () => {
     expect(panel().webview.posted).toContainEqual({ type: 'submit_ack', submitId: 's1', status: 'not_handled' });
     expect(transcript.filter((entry) => entry.role !== 'system').map((entry) => [entry.role, entry.text])).toEqual([
       ['user', 'explain this'],
-      ['kirosight', REASONING_NOT_CONNECTED],
+      // The panel is open but the (fake) backend is not connected yet, so agent text is not relayed.
+      ['kirosight', BACKEND_UNAVAILABLE_TEXT],
       ['user', 'where am I'],
       ['kirosight', 'No file is open.'],
     ]);

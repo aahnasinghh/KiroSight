@@ -178,7 +178,7 @@ interface InFlight {
 export class BackendClient {
   private readonly url: string;
   private readonly socketFactory: WebSocketFactory;
-  private readonly token: string | undefined;
+  private token: string | undefined;
   private readonly scheduler: Scheduler;
   private readonly logger: BackendLogger | undefined;
 
@@ -205,6 +205,15 @@ export class BackendClient {
 
   public get capabilities(): Capabilities | null {
     return this.currentCapabilities;
+  }
+
+  /**
+   * Replaces the optional handshake token. It is read only when the next `hello` is built, so a
+   * live connection is never affected and no already-sent frame is changed. An empty value clears
+   * it. The token is never logged, emitted or exposed through any getter.
+   */
+  public setToken(token: string | undefined): void {
+    this.token = token !== undefined && token !== '' ? token : undefined;
   }
 
   /**

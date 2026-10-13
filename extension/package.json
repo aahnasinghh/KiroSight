@@ -21,7 +21,8 @@
     "onCommand:kirosight.ask",
     "onCommand:kirosight.runTests",
     "onCommand:kirosight.showTestOutput",
-    "onCommand:kirosight.startBackend"
+    "onCommand:kirosight.startBackend",
+    "onCommand:kirosight.setBackendToken"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -48,6 +49,17 @@
           "default": "",
           "scope": "machine",
           "description": "Optional trusted user command used to start the local KiroSight backend."
+        },
+        "kirosight.backendUrl": {
+          "type": "string",
+          "default": "ws://127.0.0.1:8765/ws",
+          "scope": "machine",
+          "description": "WebSocket URL of the local KiroSight backend. Only loopback ws: or wss: URLs (127.0.0.1, localhost or [::1]) are accepted; any other host is refused. Read when the extension starts, so reload the window after changing it."
+        },
+        "kirosight.voice.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow voice input and output when voice support is available. Typed text and keyboard control always work, whatever this is set to."
         }
       }
     },
@@ -87,6 +99,10 @@
       {
         "command": "kirosight.startBackend",
         "title": "KiroSight: Start Backend"
+      },
+      {
+        "command": "kirosight.setBackendToken",
+        "title": "KiroSight: Set Backend Token"
       }
     ],
     "keybindings": [

@@ -1,6 +1,14 @@
 import * as vscode from 'vscode';
 
+import { BackendAgentGateway } from './backend/agentGateway';
+import { BackendClient, validateBackendUrl, type Scheduler, type WebSocketFactory } from './backend/backendClient';
+import { readBackendUrl } from './backend/backendConfig';
 import { BackendLauncher } from './backend/backendLauncher';
+import { formatBackendStatus } from './backend/backendStatus';
+import { readBackendToken } from './backend/backendToken';
+import { createSetBackendTokenHandler } from './backend/backendTokenCommand';
+import { ConnectionManager } from './backend/connectionManager';
+import { createGlobalWebSocketFactory } from './backend/webSocketFactory';
 import { ActionExecutor } from './actions/actionExecutor';
 import { registerCommands } from './commands/registerCommands';
 import { ActionGate } from './confirmation/actionGate';
@@ -30,6 +38,10 @@ const RUN_TESTS_UTTERANCE = 'run my tests';
 /** Test seam only: VS Code calls activate(context) with no second argument. */
 export interface ActivationOverrides {
   readonly testRunner?: TestRunner;
+  /** Lets tests supply fake sockets; production uses the standard WebSocket global. */
+  readonly socketFactory?: WebSocketFactory;
+  /** Lets tests drive reconnect and timeout timers without real time. */
+  readonly scheduler?: Scheduler;
 }
 
 export function activate(context: vscode.ExtensionContext, overrides: ActivationOverrides = {}): void {
@@ -62,20 +74,56 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     testRuns: testRunStore,
   });
 
+  // One shared backend stack. Nothing connects here: the socket opens only when the panel opens.
+  const backendUrlSetting = readBackendUrl();
+  const backendUrlValid = validateBackendUrl(backendUrlSetting).ok;
+  const backendClient = new BackendClient({
+    url: backendUrlSetting,
+    socketFactory: overrides.socketFactory ?? createGlobalWebSocketFactory(),
+    scheduler: overrides.scheduler,
+  });
+  const connectionManager = new ConnectionManager({ client: backendClient, scheduler: overrides.scheduler });
+  const agentGateway = new BackendAgentGateway({ client: backendClient, context: contextService });
+
+  // The optional token is read from SecretStorage once; it reaches only the next `hello`.
+  const tokenLoaded: Promise<void> = readBackendToken(context.secrets).then((token) => {
+    backendClient.setToken(token);
+  });
+
   // One transcript and one pipeline serve the webview and every direct command.
   const transcript = new TranscriptStore();
   let currentViewModel: ViewModel = createViewModel({ transcript: transcript.getEntries() });
   let webviewProvider: WebviewProvider | undefined;
+  let panelOpen = false;
+
+  const backendStatusText = (): string => formatBackendStatus({
+    state: connectionManager.state,
+    capabilities: backendClient.capabilities,
+    urlValid: backendUrlValid,
+  });
+
+  /** Adds the live backend connection summary to the status text of a view model. */
+  const withBackendStatus = (model: ViewModel): ViewModel => createViewModel({
+    statusKind: model.statusKind,
+    latest: model.latest,
+    pendingConfirmation: model.pendingConfirmation,
+    voice: model.voice,
+    listening: model.listening,
+    transcript: model.transcript,
+    backendStatus: backendStatusText(),
+  });
 
   const inputPipeline = new InputPipeline({
     transcript,
     localIntents: localIntentHandler,
     confirmation: confirmationController,
+    agent: agentGateway,
     // State changes reach an open panel immediately; a closed panel just keeps the state.
     onViewModel: (model) => {
       currentViewModel = model;
-      webviewProvider?.updateViewModel(model);
+      webviewProvider?.updateViewModel(withBackendStatus(model));
     },
+    onBackendUnavailable: (notice) => webviewProvider?.notifyBackendUnavailable(notice.kind, notice.message),
   });
 
   /** Keeps the status label consistent with the live confirmation state. */
@@ -86,24 +134,48 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     return currentViewModel.statusKind;
   };
 
+  /**
+   * The transcript store and the ConfirmationManager are authoritative, so a snapshot (for example
+   * on ready after the panel was reopened) always shows the live pending prompt and backend state.
+   */
+  const currentSnapshot = (): ViewModel => createViewModel({
+    statusKind: currentStatusKind(),
+    latest: currentViewModel.latest,
+    pendingConfirmation: confirmationController.pendingConfirmation(),
+    voice: currentViewModel.voice,
+    listening: currentViewModel.listening,
+    transcript: transcript.getEntries(),
+    backendStatus: backendStatusText(),
+  });
+
   webviewProvider = new WebviewProvider({
     extensionUri: context.extensionUri,
     pipeline: inputPipeline,
     transcript,
-    // The transcript store and the ConfirmationManager are authoritative, so a snapshot (for
-    // example on ready after the panel was reopened) always shows the live pending prompt.
-    getViewModel: () => {
-      return createViewModel({
-        statusKind: currentStatusKind(),
-        latest: currentViewModel.latest,
-        pendingConfirmation: confirmationController.pendingConfirmation(),
-        voice: currentViewModel.voice,
-        listening: currentViewModel.listening,
-        transcript: transcript.getEntries(),
-      });
+    getViewModel: () => currentSnapshot(),
+    // The connection follows the panel: it opens with the panel and closes with it. The token is
+    // loaded first so the very first handshake already carries it.
+    onPanelOpenChange: (open) => {
+      panelOpen = open;
+      void tokenLoaded.then(() => connectionManager.setPanelOpen(panelOpen));
     },
   });
   const panel = webviewProvider;
+
+  // A connection state change refreshes the status text of an open panel at once.
+  const backendStateSubscription = connectionManager.onStateChange(() => {
+    webviewProvider?.updateViewModel(currentSnapshot());
+  });
+
+  /** Applies a changed token on the next handshake by intentionally reconnecting an open panel. */
+  const applyTokenChange = async (): Promise<void> => {
+    await tokenLoaded;
+    backendClient.setToken(await readBackendToken(context.secrets));
+    if (panelOpen) {
+      connectionManager.setPanelOpen(false);
+      connectionManager.setPanelOpen(true);
+    }
+  };
 
   const commandRegistrations = registerCommands({
     activate: () => panel.openOrFocus(),
@@ -122,7 +194,15 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
       const result = backendLauncher.start();
       void vscode.window.showInformationMessage(result.message);
     },
+    // Separate from startBackend: this only updates SecretStorage and the next handshake.
+    setBackendToken: createSetBackendTokenHandler({ secrets: context.secrets, applyTokenChange }),
   });
 
-  context.subscriptions.push(commandRegistrations, panel, editorAdapter, testRunner);
+  context.subscriptions.push(
+    commandRegistrations,
+    panel,
+    editorAdapter,
+    testRunner,
+    vscode.Disposable.from(connectionManager, backendStateSubscription),
+  );
 }

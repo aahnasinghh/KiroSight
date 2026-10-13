@@ -4,6 +4,7 @@ import { resolve as resolvePath } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activate } from '../../src/extension';
+import { fakeBackendOverrides } from '../mocks/backendOverrides';
 import { Uri, resetVscodeMock, vscodeMockState } from '../mocks/vscode';
 
 const COMMANDS = [
@@ -16,11 +17,15 @@ const COMMANDS = [
   'kirosight.runTests',
   'kirosight.showTestOutput',
   'kirosight.startBackend',
+  'kirosight.setBackendToken',
 ] as const;
 
 function activateExtension(): Array<{ dispose(): void }> {
   const subscriptions: Array<{ dispose(): void }> = [];
-  activate({ subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0]);
+  activate(
+    { subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0],
+    fakeBackendOverrides().overrides,
+  );
   return subscriptions;
 }
 
@@ -36,7 +41,7 @@ describe('Milestone 3 command registration (post Milestone 4 wiring)', () => {
     for (const command of COMMANDS) {
       expect(vscodeMockState.registeredCommands.has(command)).toBe(true);
     }
-    expect(subscriptions).toHaveLength(4);
+    expect(subscriptions).toHaveLength(5);
 
     for (const subscription of subscriptions) subscription.dispose();
     for (const command of COMMANDS) {

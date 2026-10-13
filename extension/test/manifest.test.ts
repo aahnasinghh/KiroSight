@@ -183,6 +183,38 @@ describe('extension manifest', () => {
 
     expect(testCommand?.default).not.toMatch(/npm|pytest|vitest|mocha|node/i);
   });
+  it('contributes a loopback-only backend URL setting that cannot be set by a workspace', () => {
+    const properties = manifest.contributes?.configuration?.properties ?? {};
+    const backendUrl = properties['kirosight.backendUrl'];
+
+    expect(backendUrl?.type).toBe('string');
+    expect(backendUrl?.default).toBe('ws://127.0.0.1:8765/ws');
+    expect(backendUrl?.scope).toBe('machine');
+    expect(backendUrl?.description).toMatch(/loopback/i);
+    expect(new URL(String(backendUrl?.default)).hostname).toBe('127.0.0.1');
+  });
+
+  it('contributes the optional voice setting, on by default, without any token setting', () => {
+    const properties = manifest.contributes?.configuration?.properties ?? {};
+    const voiceEnabled = properties['kirosight.voice.enabled'];
+
+    expect(voiceEnabled?.type).toBe('boolean');
+    expect(voiceEnabled?.default).toBe(true);
+    expect(voiceEnabled?.description).toBeTruthy();
+    expect(Object.keys(properties).filter((key) => /token|secret|password|key/i.test(key))).toEqual([]);
+  });
+
+  it('contributes the set-backend-token command separately from the launcher, without a keybinding', () => {
+    expect(manifest.contributes?.commands).toContainEqual({
+      command: 'kirosight.setBackendToken',
+      title: 'KiroSight: Set Backend Token',
+    });
+    expect(manifest.activationEvents).toContain('onCommand:kirosight.setBackendToken');
+    expect(manifest.contributes?.keybindings?.some(
+      (binding) => binding.command === 'kirosight.setBackendToken',
+    )).toBe(false);
+  });
+
   it('packages the compiled output and the webview media assets', () => {
     const files = (JSON.parse(
       readFileSync(resolve(testDirectory, '../package.json'), 'utf8'),

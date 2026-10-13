@@ -28,6 +28,11 @@ export interface WebviewProviderDeps {
   readonly transcript: Pick<TranscriptStore, 'append'>;
   /** The canonical current view model; the provider keeps no model of its own. */
   readonly getViewModel: () => ViewModel;
+  /**
+   * Called with true when the panel is created and with false when it is disposed. Repeated
+   * openOrFocus() calls on an existing panel do not call it again.
+   */
+  readonly onPanelOpenChange?: (open: boolean) => void;
 }
 
 type SubmitTextMessage = Extract<WebviewToHostMessage, { type: 'submit_text' }>;
@@ -58,6 +63,7 @@ export class WebviewProvider implements vscode.Disposable {
     }
 
     this.panel = this.createPanel();
+    this.notifyPanelOpenChange(true);
   }
 
   /** Sends the full current view model, only while a panel exists. */
@@ -79,6 +85,14 @@ export class WebviewProvider implements vscode.Disposable {
 
   public dispose(): void {
     this.panel?.dispose();
+  }
+
+  private notifyPanelOpenChange(open: boolean): void {
+    try {
+      this.deps.onPanelOpenChange?.(open);
+    } catch {
+      // A lifecycle observer must never break the panel.
+    }
   }
 
   private recordVoiceNoticeOnce(): void {
@@ -108,6 +122,7 @@ export class WebviewProvider implements vscode.Disposable {
     panel.onDidDispose(() => {
       subscription.dispose();
       this.panel = undefined;
+      this.notifyPanelOpenChange(false);
     });
 
     webview.html = buildWebviewHtml({

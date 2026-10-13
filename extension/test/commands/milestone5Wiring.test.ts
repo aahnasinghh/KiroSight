@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activate } from '../../src/extension';
 import { TestRunner, type TestProcess } from '../../src/testing/testRunner';
+import { fakeBackendOverrides } from '../mocks/backendOverrides';
 import {
   Uri, resetEditorMock, resetVscodeMock, setMockConfiguration, setMockWorkspace, vscodeMockState,
   type MockWebviewPanel,
@@ -51,7 +52,10 @@ function boot(testCommand: string | undefined) {
     scheduler: { set: () => ({}) as object, clear: () => undefined },
   });
   const subscriptions: Array<{ dispose(): void }> = [];
-  activate({ subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0], { testRunner });
+  activate(
+    { subscriptions, extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0],
+    { testRunner, ...fakeBackendOverrides().overrides },
+  );
   return { spawned, children, subscriptions };
 }
 
