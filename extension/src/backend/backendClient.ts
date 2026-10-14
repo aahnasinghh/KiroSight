@@ -11,6 +11,8 @@ import type {
   ErrorMessage,
   Hello,
   ProtocolMessage,
+  RecordStart,
+  RecordStop,
   SpeechAudio,
   TranscriptionResult,
   WireActionResult,
@@ -378,6 +380,33 @@ export class BackendClient {
       return true;
     } catch {
       this.logger?.warn('Audio clip could not be sent');
+      return false;
+    }
+  }
+
+  /**
+   * Asks the backend to start recording from its own microphone (backend-local voice input). The
+   * microphone opens only for this message. Returns false, having sent nothing, when the
+   * connection is not usable. Never queued and never replayed after a reconnect.
+   */
+  public sendRecordStart(id: string): boolean {
+    return this.sendRecordMessage({ version: PROTOCOL_VERSION, type: 'record_start', id });
+  }
+
+  /** Asks the backend to end the recording `id` and transcribe it. Same send rules as record_start. */
+  public sendRecordStop(id: string): boolean {
+    return this.sendRecordMessage({ version: PROTOCOL_VERSION, type: 'record_stop', id });
+  }
+
+  private sendRecordMessage(message: RecordStart | RecordStop): boolean {
+    if (!this.isUsable()) return false;
+    const serialized = this.serialize(message);
+    if (serialized === undefined) return false;
+    try {
+      this.requireSocket().send(serialized);
+      return true;
+    } catch {
+      this.logger?.warn('Record message could not be sent', { type: message.type });
       return false;
     }
   }

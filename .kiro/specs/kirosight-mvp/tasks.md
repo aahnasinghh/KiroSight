@@ -527,23 +527,23 @@ Scope guardrails taken from the approved spec:
     - Implement the `STTClient` interface and an `httpx`-based Deepgram Nova-2 client in `speech/deepgram_service.py` (model from `DEEPGRAM_STT_MODEL`, 10 s timeout, `DEEPGRAM_API_KEY` from the environment with no call and a named error when missing). Handle `audio_clip` in `main.py`: answer with `transcription_result`, or an `error_message` (`STT_UNAVAILABLE`, `STT_NO_SPEECH`, `TIMEOUT`). Report `capabilities.stt`.
     - _Requirements: 9.1, 9.2, 9.3, 10.1, 17.1, 17.5_
 
-  - [ ] 8.5 Implement the backend-local recorder
+  - [x] 8.5 Implement the backend-local recorder
     - Implement `speech/local_recorder.py`: on `record_start` record from the default microphone, stop on `record_stop` or at 60 s, re-check microphone availability on every start, and pass the clip to the STT client. Answer with `transcription_result` or `error_message` (`MIC_UNAVAILABLE`, `MIC_DENIED`), and report `capabilities.mic`. The recorder holds no credentials. Add the audio library as an exactly pinned dependency.
     - _Requirements: 19.6, 19.8_
 
-  - [ ] 8.6 Implement BackendLocalVoiceInput
+  - [x] 8.6 Implement BackendLocalVoiceInput
     - Implement `voice/backendLocalVoiceInput.ts` behind the `VoiceInput` interface: send `record_start` and `record_stop`, and resolve `stop()` to the backend clip id. Text it produces enters `InputPipeline.handle(text, 'voice')` exactly like webview-captured text, and no credential is involved on the extension side.
     - _Requirements: 19.6, 19.7, 19.8_
 
-  - [ ]* 8.7 Write property test for missing credentials
+  - [x]* 8.7 Write property test for missing credentials
     - **Property 26: Missing credentials block provider calls**
     - **Validates: Requirements 17.5**
 
-  - [ ]* 8.8 Write Deepgram STT and recorder tests
+  - [x]* 8.8 Write Deepgram STT and recorder tests
     - With `httpx.MockTransport`: success, HTTP errors, a 10 s timeout and an empty transcript map to the right `error_message` codes. With a fake recorder: microphone unavailable and denied, and the 60 s cap.
     - _Requirements: 9.3, 10.1, 17.5, 19.6_
 
-  - [ ] 8.9 Integrate voice with the pipeline, view model and activation
+  - [x] 8.9 Integrate voice with the pipeline, view model and activation
     - Route `transcription_result` to `InputPipeline.handle(text, 'voice')` and record the text as the user's query. On a transcription failure, timeout or empty result: route nothing, add a Transcript entry within 1 s saying the voice input could not be processed, keep the typed draft, and leave push-to-talk enabled. Implement the push-to-talk toggle (Enter or Space to start and stop, Listening and Processing labels). Implement the voice states (granted, undetermined, denied, unavailable, granted later) so that `kirosight.activate` always opens the panel, begins listening only when the microphone is known to be granted and speech is available, offers a keyboard-operable permission request otherwise, and records that voice is unavailable. When initialization is not finished within 10 s, add the "voice unavailable for the session" entry and keep push-to-talk focusable with visible text. Typed input and local features stay operable under every voice failure.
     - _Requirements: 9.2, 9.3, 10.1, 10.3, 10.4, 10.5, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 19.7_
 

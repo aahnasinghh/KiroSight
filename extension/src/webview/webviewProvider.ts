@@ -41,6 +41,10 @@ export interface WebviewProviderDeps {
   readonly voice?: {
     onMicState(state: 'granted' | 'denied' | 'unavailable' | 'prompt'): void;
     onAudioClip(chunk: AudioChunk): void;
+    /** The push-to-talk control was activated (Enter, Space or a click). Starts or ends listening. */
+    onPushToTalkToggle?(): void | Promise<void>;
+    /** Escape: abandon any recording or pending transcription. */
+    onInterrupt?(): void;
   };
 }
 
@@ -185,6 +189,7 @@ export class WebviewProvider implements vscode.Disposable {
           return;
         case 'interrupt':
           this.deps.pipeline.interrupt();
+          this.deps.voice?.onInterrupt?.();
           return;
         case 'mic_state':
           // Handed to the voice layer, if one is connected. The host never relays this itself.
@@ -194,8 +199,11 @@ export class WebviewProvider implements vscode.Disposable {
           this.deps.voice?.onAudioClip(message);
           return;
         case 'ptt_toggle':
+          // The voice layer decides what a press means; without one the press has no effect.
+          await this.deps.voice?.onPushToTalkToggle?.();
+          return;
         case 'playback':
-          // Push-to-talk wiring (Task 8.9) and playback (Milestone 9) come later.
+          // Playback arrives in Milestone 9.
           return;
       }
     } catch {
