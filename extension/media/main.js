@@ -159,12 +159,169 @@
     }
   }
 
+  // --- microphone capture ---------------------------------------------------------------------
+  // The page records only when the host asks (start_capture) and stops when it asks
+  // (stop_capture); it never starts on its own and never touches the network. Audio goes to the
+  // host only through postMessage, as ordered audio_clip chunks: seq counts from 0 and the last
+  // chunk has final: true. A chunk never carries more than about 1 MB of base64; the host puts the
+  // chunks back together and sends one clip to the backend.
+  var RECORDER_SLICE_MS = 1000;
+  var MAX_CHUNK_BYTES = 600000; // 800,000 base64 characters, under the 1 MB chunk limit
+  var PREFERRED_AUDIO_TYPES = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
+  var captureCounter = 0;
+  var capture = null;
+
+  function postMic(state) {
+    post({ type: 'mic_state', state: state });
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = function () { reject(reader.error); };
+      reader.onload = function () {
+        var text = String(reader.result);
+        resolve(text.slice(text.indexOf(',') + 1));
+      };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function releaseStream(stream) {
+    if (stream && typeof stream.getTracks === 'function') {
+      stream.getTracks().forEach(function (track) { track.stop(); });
+    }
+  }
+
+  // Chunks are posted strictly in order: each waits for the one before it.
+  function enqueueChunk(session, blob) {
+    session.chain = session.chain.then(function () {
+      var posts = Promise.resolve();
+      for (var offset = 0; offset < blob.size; offset += MAX_CHUNK_BYTES) {
+        posts = posts.then(blobToBase64.bind(null, blob.slice(offset, offset + MAX_CHUNK_BYTES))).then(function (base64) {
+          post({
+            type: 'audio_clip', clipId: session.clipId, mimeType: session.mimeType,
+            base64: base64, seq: session.seq, final: false
+          });
+          session.seq += 1;
+        });
+      }
+      return posts;
+    }).catch(function () {
+      postMic('unavailable');
+    });
+  }
+
+  function enqueueFinal(session) {
+    session.chain = session.chain.then(function () {
+      post({
+        type: 'audio_clip', clipId: session.clipId, mimeType: session.mimeType,
+        base64: '', seq: session.seq, final: true
+      });
+      session.seq += 1;
+      if (capture === session) {
+        capture = null;
+      }
+    });
+  }
+
+  function startCapture() {
+    if (capture !== null) {
+      return; // already recording: a repeated request changes nothing
+    }
+
+    var media = navigator.mediaDevices;
+    if (!media || typeof media.getUserMedia !== 'function' || typeof window.MediaRecorder !== 'function') {
+      postMic('unavailable');
+      return;
+    }
+
+    captureCounter += 1;
+    var session = {
+      clipId: 'clip-' + captureCounter, mimeType: 'audio/webm', seq: 0, stopped: false,
+      stream: null, recorder: null, chain: Promise.resolve()
+    };
+    capture = session;
+
+    media.getUserMedia({ audio: true }).then(function (stream) {
+      if (session.stopped) {
+        // stop_capture arrived while the permission prompt was open: record nothing.
+        releaseStream(stream);
+        enqueueFinal(session);
+        return;
+      }
+
+      session.stream = stream;
+      postMic('granted');
+
+      var recorderType = '';
+      if (typeof window.MediaRecorder.isTypeSupported === 'function') {
+        for (var i = 0; i < PREFERRED_AUDIO_TYPES.length && recorderType === ''; i += 1) {
+          if (window.MediaRecorder.isTypeSupported(PREFERRED_AUDIO_TYPES[i])) {
+            recorderType = PREFERRED_AUDIO_TYPES[i];
+          }
+        }
+      }
+      var recorder = recorderType === ''
+        ? new window.MediaRecorder(stream)
+        : new window.MediaRecorder(stream, { mimeType: recorderType });
+      session.recorder = recorder;
+      if (typeof recorder.mimeType === 'string' && recorder.mimeType !== '') {
+        session.mimeType = recorder.mimeType;
+      }
+
+      recorder.ondataavailable = function (event) {
+        if (event.data && event.data.size > 0) {
+          enqueueChunk(session, event.data);
+        }
+      };
+      recorder.onstop = function () {
+        releaseStream(session.stream);
+        enqueueFinal(session);
+      };
+      recorder.onerror = function () {
+        postMic('unavailable');
+        stopCapture();
+      };
+      recorder.start(RECORDER_SLICE_MS);
+    }, function (error) {
+      capture = null;
+      var name = error && error.name;
+      postMic(name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : 'unavailable');
+    });
+  }
+
+  function stopCapture() {
+    var session = capture;
+    if (session === null || session.stopped) {
+      return;
+    }
+    session.stopped = true;
+    if (session.recorder && session.recorder.state !== 'inactive') {
+      session.recorder.stop();
+    }
+  }
+
+  // Leaving the page must release the microphone.
+  window.addEventListener('pagehide', function () {
+    stopCapture();
+    if (capture !== null) {
+      releaseStream(capture.stream);
+    }
+  });
+
   function handleHostMessage(message) {
     if (message === null || typeof message !== 'object') {
       return;
     }
 
     switch (message.type) {
+      case 'start_capture':
+        startCapture();
+        break;
+      case 'stop_capture':
+        stopCapture();
+        break;
       case 'view_state':
         renderViewState(message);
         break;

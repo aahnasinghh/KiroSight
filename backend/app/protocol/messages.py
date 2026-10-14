@@ -35,6 +35,7 @@ from pydantic import (
     StrictInt,
     StrictStr,
     TypeAdapter,
+    model_validator,
 )
 
 __all__ = [
@@ -440,6 +441,16 @@ class AudioClip(_Message):
     id: StrictStr
     mimeType: StrictStr
     base64: StrictStr
+    # A chunked recording: ordered frames sharing ``id``, ``seq`` from 0, ``final`` on the last.
+    # The two fields travel together; a whole-recording frame carries neither.
+    seq: Annotated[NonNegativeInt | None, _NoNull] = None
+    final: Annotated[StrictBool | None, _NoNull] = None
+
+    @model_validator(mode="after")
+    def _seq_and_final_together(self) -> AudioClip:
+        if (self.seq is None) != (self.final is None):
+            raise ValueError("seq and final must be given together")
+        return self
 
 
 class SpeechRequest(_Message):

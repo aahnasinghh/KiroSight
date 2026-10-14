@@ -88,6 +88,10 @@ export interface AudioClip extends Base {
   id: string;
   mimeType: string;
   base64: string;
+  /** Position of this frame within a chunked recording, from 0. Given together with `final`. */
+  seq?: number;
+  /** True on the last frame of a chunked recording. Given together with `seq`. */
+  final?: boolean;
 }
 
 export interface SpeechRequest extends Base {

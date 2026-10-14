@@ -515,15 +515,15 @@ Scope guardrails taken from the approved spec:
     - Must NOT implement the real voice feature. Record the outcome in `docs/spike-results.md`. This spike can also be done early, in parallel with Milestone 1, if time allows.
     - _Requirements: 19.6_
 
-  - [ ] 8.2 Implement the VoiceInput interface and VoiceController
+  - [x] 8.2 Implement the VoiceInput interface and VoiceController
     - Implement `voice/voiceInput.ts` (the interface with `kind`, `maxDurationMs` of 60,000, `available()`, `start()`, `stop()`, `cancel()`) and `voice/voiceController.ts`. The controller depends only on the interface, selects the implementation from the `hello_ack` capabilities and the Spike D result (a documented default constant), applies the 60 s cap, the 5 s first-sample watchdog that marks webview capture unreliable, the 10 s STT response limit, and the 10 s voice initialization budget. It remembers the last known microphone state. It only hands finished transcription text to `InputPipeline.handle(text, 'voice')`.
     - _Requirements: 9.1, 9.3, 10.3, 19.6, 19.7_
 
-  - [ ] 8.3 Implement webview capture and audio relay
+  - [x] 8.3 Implement webview capture and audio relay
     - Add `MediaRecorder` capture to `media/main.js` (start and stop on `start_capture` and `stop_capture`, report `mic_state` of `granted`, `denied`, `unavailable` or `prompt`, send the clip as one `audio_clip`, chunked with `seq` and `final` above 1 MB). Implement `voice/webviewVoiceInput.ts` and `voice/audioRelay.ts`, which relay clips to the backend within 500 ms in the order received.
     - _Requirements: 9.1, 19.1, 19.3, 19.5_
 
-  - [ ] 8.4 Implement Deepgram speech-to-text in the backend
+  - [x] 8.4 Implement Deepgram speech-to-text in the backend
     - Implement the `STTClient` interface and an `httpx`-based Deepgram Nova-2 client in `speech/deepgram_service.py` (model from `DEEPGRAM_STT_MODEL`, 10 s timeout, `DEEPGRAM_API_KEY` from the environment with no call and a named error when missing). Handle `audio_clip` in `main.py`: answer with `transcription_result`, or an `error_message` (`STT_UNAVAILABLE`, `STT_NO_SPEECH`, `TIMEOUT`). Report `capabilities.stt`.
     - _Requirements: 9.1, 9.2, 9.3, 10.1, 17.1, 17.5_
 

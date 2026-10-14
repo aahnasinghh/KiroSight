@@ -127,21 +127,47 @@ Extension to backend. Reports what happened to an agent-originated action, inclu
 
 ### record_start and record_stop
 
-Extension to backend. Used only by the backend-local voice input.
+Extension to backend. Used only by the backend-local voice input (Task 8.5), where the backend records from the machine's default microphone.
 
 | Field | Type | Required |
 |---|---|---|
-| `id` | string | yes |
+| `id` | string (the recording id; it names the clip in every reply) | yes |
+
+How the backend handles them:
+
+- **Nothing records by itself.** The microphone opens only for a `record_start`. The handshake, `hello_ack.capabilities.mic` and typing never open it. `mic` is `available`, `unavailable` or `denied` (read without capturing), or `not_applicable` when the backend has no audio input configured.
+- **`record_start` success is silent.** There is no acknowledgement message. A failure is one `error_message` with `replyTo` = the recording `id`:
+  - `MIC_DENIED`: the operating system refused microphone access. `recoverable` is true.
+  - `MIC_UNAVAILABLE`: no usable microphone, the device failed to open, it is in use by another KiroSight connection, or (non-recoverable) the backend has no audio input at all. The microphone is re-checked on every `record_start`, so a later fix works without a restart.
+  - `CREDENTIAL_MISSING`: `DEEPGRAM_API_KEY` is not set. Nothing is recorded, because the clip could not be transcribed.
+  - `VALIDATION_FAILED`: a recording is already in progress on this connection, or the id was empty, too long or already used.
+- **`record_stop`** closes the microphone and sends the clip through the same speech-to-text path as an `audio_clip` (see [transcription_result](#transcription_result)): one `transcription_result` or one `error_message` (`STT_NO_SPEECH` if nothing was captured, `MIC_UNAVAILABLE` if the device stopped by itself mid-recording, or any STT error) with `replyTo` = the recording `id`. A repeated `record_stop` for a recording that already ended is ignored without a reply; one for an id that never started is `VALIDATION_FAILED`.
+- **60 s cap.** The backend ends a recording 60 seconds after it started, exactly as if `record_stop` had arrived, and the later `record_stop` is ignored. Audio is held in memory only, capped at 1,920,000 bytes (60 s of 16 kHz mono 16-bit), and sent as `audio/wav`.
+- **`cancel`** with `targetId` = the recording `id` closes the microphone and discards the audio, with no reply. Closing the connection does the same.
+- One recording at a time across the whole backend: a second connection that tries to record while the microphone is in use gets `MIC_UNAVAILABLE`.
 
 ### audio_clip
 
-Extension to backend. A recorded clip.
+Extension to backend. Recorded audio: either a whole clip in one frame, or a recording sent as it is captured in an ordered series of frames.
 
 | Field | Type | Required |
 |---|---|---|
 | `id` | string | yes |
 | `mimeType` | string | yes |
-| `base64` | string | yes |
+| `base64` | string (may be empty only on a `final` frame) | yes |
+| `seq` | integer, 0 or more | with `final` |
+| `final` | boolean | with `seq` |
+
+`seq` and `final` travel together: a frame carries both or neither. A frame with neither is a whole clip.
+
+Chunked recordings (Req 19.5): the extension forwards each audio chunk to the backend as soon as it receives it, without waiting for the recording to end, so the backend sees the audio progressively.
+
+- All frames of one recording share the same `id` (`voice-N`, assigned by the extension).
+- `seq` starts at 0 and increases by exactly 1 per frame, with no gaps and no repeats. Frames arrive in order on the one WebSocket connection.
+- `final: true` marks the last frame of the recording. Its `base64` may be empty when the recording ended on a bare end marker. Nothing follows a `final` frame for that `id`.
+- Each frame carries at most 1,000,000 base64 characters, so it stays under the backend's 2 MiB inbound message limit. A whole recording is capped at 4 MiB of audio and 2,000 frames.
+- If the extension abandons a recording after some frames were sent (a cancelled capture, a bad chunk, a lost connection, a new recording taking over), it sends a [`cancel`](#cancel) whose `targetId` is the recording `id`. The backend discards the partial recording and must not transcribe it.
+- The extension measures relay latency per chunk from receipt on the extension host to the return of the send, against a 500 ms deadline.
 
 ### transcription_result
 
@@ -149,8 +175,25 @@ Backend to extension. Speech-to-text output for an `audio_clip`.
 
 | Field | Type | Required |
 |---|---|---|
-| `replyTo` | string | yes |
+| `replyTo` | string (the recording `id`) | yes |
 | `text` | string | yes |
+
+How the backend answers an `audio_clip` (Task 8.4, Deepgram Nova-2):
+
+- A recording is transcribed only when it is complete: a whole clip (no `seq`/`final`), or a chunked recording once its `final` frame has arrived in strict order. An incomplete recording is never transcribed, and its buffers are released on `cancel`, on any invalid frame, after 75 s without completion, and when the connection closes.
+- Success: exactly one `transcription_result` whose `replyTo` is the recording `id`. `text` is non-empty, trimmed, at most 4,000 characters, and is untrusted user text: the extension feeds it to its own input pipeline like typed text. The backend never acts on it.
+- Failure: exactly one `error_message` with `replyTo` set to the recording `id` and no transcript.
+
+| Code | Cause | `recoverable` |
+|---|---|---|
+| `CREDENTIAL_MISSING` | `DEEPGRAM_API_KEY` is not set. No audio is collected and no call is made; the message names the variable. | false |
+| `STT_UNAVAILABLE` | Deepgram could not be reached, rejected the request or the credential, returned an unusable answer, or the service is busy (at most 2 transcriptions run at once per connection). | usually true |
+| `STT_NO_SPEECH` | The recording had no audio, or Deepgram returned an empty transcript. | true |
+| `TIMEOUT` | Deepgram did not answer within 10 seconds. One attempt only; nothing is retried. | true |
+| `VALIDATION_FAILED` | The frame was invalid: not an `audio/*` type, bad base64, a repeated, skipped or out-of-order `seq`, a changed type, an id already in use or already received, more than 4 MiB or 2,000 frames, or more than 4 recordings in progress. The whole recording is discarded and reported once; later frames of that id are ignored without a reply. | true |
+| `INTERNAL` | An unexpected backend error. | true |
+
+A `cancel` whose `targetId` is a recording `id` discards the partial recording, or stops a transcription already in progress. Neither sends a reply.
 
 ### speech_request
 
@@ -174,11 +217,11 @@ Backend to extension. The synthesized audio.
 
 ### cancel
 
-Extension to backend. Stops an in-flight request.
+Extension to backend. Stops an in-flight request, or discards a partly sent chunked recording.
 
 | Field | Type | Required |
 |---|---|---|
-| `targetId` | string (the `id` of the request to cancel) | yes |
+| `targetId` | string (the `id` of the request to cancel, or of the `audio_clip` recording to discard) | yes |
 
 ### error_message
 
@@ -202,7 +245,7 @@ Backend to extension. Reports a failure. It never echoes the offending payload.
 | `tts` | boolean |
 | `mic` | `"available"`, `"unavailable"`, `"denied"` or `"not_applicable"` |
 
-The shape is defined here. Real values arrive when the backend handshake is implemented.
+The backend reports `stt: true` only when `DEEPGRAM_API_KEY` is set (and `DEEPGRAM_STT_MODEL`, if set, is a valid name), checked on each connection. That means a call could be made; it does not prove Deepgram will accept it.
 
 ### WireIDEContext
 

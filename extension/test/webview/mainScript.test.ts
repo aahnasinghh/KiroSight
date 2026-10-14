@@ -41,7 +41,11 @@ describe('webview main.js source', () => {
   it('posts only message types the bridge defines for the webview', () => {
     const posted = [...source.matchAll(/post\(\{ type: '([a-z_]+)'/g)].map((match) => match[1]);
 
-    expect(new Set(posted)).toEqual(new Set(['ready', 'submit_text', 'confirm', 'decline', 'ptt_toggle', 'interrupt']));
+    expect(new Set(posted)).toEqual(
+      new Set(['ready', 'submit_text', 'confirm', 'decline', 'ptt_toggle', 'interrupt', 'mic_state']),
+    );
+    // The recording is posted as audio_clip chunks (multi-line posts the pattern above skips).
+    expect(source.match(/type: 'audio_clip'/g)).toHaveLength(2);
   });
 
   it('clears the draft only for a handled acknowledgement', () => {

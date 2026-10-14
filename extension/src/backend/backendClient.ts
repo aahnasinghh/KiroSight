@@ -3,6 +3,7 @@ import type {
   ActionRequest,
   ActionResultMessage,
   AgentRequest,
+  AudioClip,
   AgentResponse,
   Cancel,
   Capabilities,
@@ -343,6 +344,58 @@ export class BackendClient {
       return true;
     } catch {
       this.logger?.warn('Action result could not be sent');
+      return false;
+    }
+  }
+
+  /**
+   * Sends one finished recording to the backend for speech-to-text. Returns false, having sent
+   * nothing, when the connection is not usable or the frame does not validate. A recording is
+   * never queued and never replayed after a reconnect: it belongs to one capture the user made.
+   * The frame content is never logged.
+   */
+  public sendAudioClip(clip: {
+    readonly id: string;
+    readonly mimeType: string;
+    readonly base64: string;
+    readonly seq?: number;
+    readonly final?: boolean;
+  }): boolean {
+    if (!this.isUsable()) return false;
+    const message: AudioClip = {
+      version: PROTOCOL_VERSION,
+      type: 'audio_clip',
+      id: clip.id,
+      mimeType: clip.mimeType,
+      base64: clip.base64,
+      ...(clip.seq !== undefined ? { seq: clip.seq } : {}),
+      ...(clip.final !== undefined ? { final: clip.final } : {}),
+    };
+    const serialized = this.serialize(message);
+    if (serialized === undefined) return false;
+    try {
+      this.requireSocket().send(serialized);
+      return true;
+    } catch {
+      this.logger?.warn('Audio clip could not be sent');
+      return false;
+    }
+  }
+
+  /**
+   * Tells the backend to discard a partly sent recording. Returns false, having sent nothing, when
+   * the connection is not usable. (`cancel` only acts on in-flight agent requests.)
+   */
+  public cancelAudioClip(id: string): boolean {
+    if (!this.isUsable()) return false;
+    const cancel: Cancel = { version: PROTOCOL_VERSION, type: 'cancel', targetId: id };
+    const serialized = this.serialize(cancel);
+    if (serialized === undefined) return false;
+    try {
+      this.requireSocket().send(serialized);
+      return true;
+    } catch {
+      this.logger?.warn('Audio cancel could not be sent');
       return false;
     }
   }

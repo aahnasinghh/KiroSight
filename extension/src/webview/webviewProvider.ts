@@ -8,6 +8,7 @@ import {
   type WebviewToHostMessage,
 } from '../protocol/bridgeMessages';
 import type { TranscriptSource, TranscriptStore } from '../transcript/transcriptStore';
+import type { AudioChunk } from '../voice/audioRelay';
 import { buildWebviewHtml, generateNonce } from './html';
 import { DEFAULT_VOICE, type ViewModel } from './viewModel';
 
@@ -33,6 +34,14 @@ export interface WebviewProviderDeps {
    * openOrFocus() calls on an existing panel do not call it again.
    */
   readonly onPanelOpenChange?: (open: boolean) => void;
+  /**
+   * Receives the validated microphone messages from the panel (WebviewVoiceInput satisfies this).
+   * Optional: without it those messages are dropped, as before voice existed.
+   */
+  readonly voice?: {
+    onMicState(state: 'granted' | 'denied' | 'unavailable' | 'prompt'): void;
+    onAudioClip(chunk: AudioChunk): void;
+  };
 }
 
 type SubmitTextMessage = Extract<WebviewToHostMessage, { type: 'submit_text' }>;
@@ -81,6 +90,23 @@ export class WebviewProvider implements vscode.Disposable {
     if (this.panel) {
       this.post(this.panel.webview, { type: 'backend_unavailable', kind, message });
     }
+  }
+
+  /** True while the panel exists. */
+  public get isOpen(): boolean {
+    return this.panel !== undefined;
+  }
+
+  /**
+   * Asks an open panel to start or stop recording. Returns false when no panel is open. The panel
+   * never records on its own: it acts only on these two messages.
+   */
+  public sendCaptureCommand(type: 'start_capture' | 'stop_capture'): boolean {
+    if (!this.panel) {
+      return false;
+    }
+    this.post(this.panel.webview, { type });
+    return true;
   }
 
   public dispose(): void {
@@ -160,11 +186,16 @@ export class WebviewProvider implements vscode.Disposable {
         case 'interrupt':
           this.deps.pipeline.interrupt();
           return;
-        case 'ptt_toggle':
-        case 'audio_clip':
         case 'mic_state':
+          // Handed to the voice layer, if one is connected. The host never relays this itself.
+          this.deps.voice?.onMicState(message.state);
+          return;
+        case 'audio_clip':
+          this.deps.voice?.onAudioClip(message);
+          return;
+        case 'ptt_toggle':
         case 'playback':
-          // Voice and playback arrive in Milestones 8 and 9; nothing happens before then.
+          // Push-to-talk wiring (Task 8.9) and playback (Milestone 9) come later.
           return;
       }
     } catch {

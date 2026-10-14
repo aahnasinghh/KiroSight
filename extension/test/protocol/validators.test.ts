@@ -304,6 +304,34 @@ describe('validateProtocolMessage: invalid messages', () => {
     }
   });
 
+  it('accepts chunked audio frames: seq and final together, including an empty final marker', () => {
+    const good = [
+      { ...validMessages.audio_clip, seq: 0, final: false },
+      { ...validMessages.audio_clip, seq: 7, final: true },
+      { ...validMessages.audio_clip, seq: 3, final: true, base64: '' },
+      { ...validMessages.audio_clip, seq: 0, final: true },
+    ];
+    for (const message of good) {
+      expect(validateProtocolMessage(message).ok).toBe(true);
+    }
+  });
+
+  it('rejects malformed chunked audio frames', () => {
+    const bad = [
+      { ...validMessages.audio_clip, seq: -1, final: false },
+      { ...validMessages.audio_clip, seq: 1.5, final: false },
+      { ...validMessages.audio_clip, seq: '0', final: false },
+      { ...validMessages.audio_clip, seq: Number.MAX_SAFE_INTEGER + 2, final: false },
+      { ...validMessages.audio_clip, seq: 0, final: 'yes' },
+      { ...validMessages.audio_clip, seq: null, final: false },
+      { ...validMessages.audio_clip, seq: 0, final: null },
+      { ...validMessages.audio_clip, seq: 0, final: false, extra: 1 },
+    ];
+    for (const message of bad) {
+      expect(validateProtocolMessage(message).ok).toBe(false);
+    }
+  });
+
   it('rejects malformed action_result payloads', () => {
     const bad: unknown[] = [
       { actionType: 'GO_TO_LINE', status: 'unknown', message: 'x' },

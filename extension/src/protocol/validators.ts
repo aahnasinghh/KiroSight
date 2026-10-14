@@ -195,13 +195,25 @@ export const actionResultMessageSchema = z.strictObject({
 export const recordStartSchema = z.strictObject({ version, type: z.literal('record_start'), id });
 export const recordStopSchema = z.strictObject({ version, type: z.literal('record_stop'), id });
 
-export const audioClipSchema = z.strictObject({
-  version,
-  type: z.literal('audio_clip'),
-  id,
-  mimeType: text,
-  base64: text,
-});
+/**
+ * One audio frame. A whole recording may be one frame without `seq`/`final`, or an ordered series
+ * of frames that share `id`: `seq` counts from 0 and `final: true` ends the recording. The two
+ * fields travel together, so a frame never carries one without the other.
+ */
+export const audioClipSchema = z
+  .strictObject({
+    version,
+    type: z.literal('audio_clip'),
+    id,
+    mimeType: text,
+    base64: text,
+    seq: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+    final: z.boolean().optional(),
+  })
+  .refine((clip) => (clip.seq === undefined) === (clip.final === undefined), {
+    message: 'seq and final must be given together',
+    path: ['seq'],
+  });
 
 export const speechRequestSchema = z.strictObject({
   version,

@@ -414,6 +414,35 @@ def test_length_caps_use_javascript_string_lengths() -> None:
     assert rejects(raw)
 
 
+def test_chunked_audio_frames_accept_seq_and_final_together() -> None:
+    base = fixture("audio_clip")
+    for seq, final, b64 in ((0, False, "AAEC"), (7, True, "AAEC"), (3, True, ""), (0, True, "AAEC")):
+        message = parse({**base, "seq": seq, "final": final, "base64": b64})
+        assert isinstance(message, AudioClip)
+        assert (message.seq, message.final, message.base64) == (seq, final, b64)
+        assert dump_message(message)["seq"] == seq
+    # A whole-recording frame carries neither field and dumps without them.
+    whole = parse(base)
+    assert isinstance(whole, AudioClip)
+    assert (whole.seq, whole.final) == (None, None)
+    assert "seq" not in dump_message(whole) and "final" not in dump_message(whole)
+
+
+def test_malformed_chunked_audio_frames_are_rejected() -> None:
+    base = fixture("audio_clip")
+    for bad in (
+        {**base, "seq": -1, "final": False},
+        {**base, "seq": 1.5, "final": False},
+        {**base, "seq": "0", "final": False},
+        {**base, "seq": 0, "final": "yes"},
+        {**base, "seq": 0, "final": 1},
+        {**base, "seq": None, "final": False},
+        {**base, "seq": 0, "final": None},
+        {**base, "seq": 0, "final": False, "extra": 1},
+    ):
+        assert rejects(bad)
+
+
 def test_capabilities_and_audio_shapes() -> None:
     caps = fixture("hello_ack")["capabilities"]
     for mic in ("available", "unavailable", "denied", "not_applicable"):
