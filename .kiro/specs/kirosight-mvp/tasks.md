@@ -563,7 +563,7 @@ Scope guardrails taken from the approved spec:
     - In `extension.ts`, construct `VoiceController` with the selected `VoiceInput`, honor `kirosight.voice.enabled`, connect it to the webview provider and the backend client, and make `kirosight.activate` use the voice-aware behavior from task 8.9. Update `docs/env-vars.md` for the Deepgram variables.
     - _Requirements: 9.7, 18.1, 18.2, 18.5, 18.6_
 
-  - [ ] 8.14 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 8.14 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: press push-to-talk, speak a local command, and see the same result as typing it. Stop the backend or disable STT and confirm typed input continues.
 
 - [ ] 9. Milestone 9: Deepgram text-to-speech
