@@ -199,6 +199,8 @@ A `cancel` whose `targetId` is a recording `id` discards the partial recording, 
 
 Extension to backend. Asks for synthesized speech for text already shown in the transcript.
 
+The backend answers with one `speech_audio` (`replyTo` = this request's `id`) or one `error_message` with the same `replyTo`: `TTS_UNAVAILABLE` (network or HTTP error, bad answer, empty text, text over 2,000 characters, too many syntheses at once), `TIMEOUT` (no answer within 10 seconds) or `CREDENTIAL_MISSING` (names `DEEPGRAM_API_KEY`; no call is made). One attempt, never retried. A `cancel` with this `id` stops synthesis and sends no reply.
+
 | Field | Type | Required |
 |---|---|---|
 | `id` | string | yes |

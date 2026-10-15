@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hmac
 import json
 import logging
@@ -41,12 +42,21 @@ from app.protocol.messages import (
     HelloAck,
     RecordStart,
     RecordStop,
+    SpeechAudio,
+    SpeechRequest,
     TranscriptionResult,
     dump_message,
 )
 from app.protocol.validators import ProtocolValidationError, parse_message
 from app.session import STUB_CAPABILITIES, DuplicateRequestError, Session
-from app.speech.deepgram_service import DeepgramSTTClient, STTClient, STTError
+from app.speech.deepgram_service import (
+    DeepgramSTTClient,
+    DeepgramTTSClient,
+    STTClient,
+    STTError,
+    TTSClient,
+    TTSError,
+)
 from app.speech.local_recorder import (
     WAV_MIME_TYPE,
     LocalRecorder,
@@ -70,6 +80,9 @@ WS_MAX_SIZE_BYTES = 2 * 1024 * 1024
 
 #: Transcriptions running at once on one connection. One capture is live at a time, so this is generous.
 MAX_CONCURRENT_TRANSCRIPTIONS = 2
+
+#: Speech syntheses running at once on one connection (the extension speaks one response at a time).
+MAX_CONCURRENT_SYNTHESES = 2
 
 AUTH_TOKEN_VARIABLE = "KIROSIGHT_AUTH_TOKEN"
 
@@ -125,11 +138,14 @@ class Connection:
         capabilities: Capabilities = STUB_CAPABILITIES,
         stt: STTClient | None = None,
         recorder: LocalRecorder | None = None,
+        tts: TTSClient | None = None,
     ) -> None:
         self._websocket = websocket
         self._agent = agent
         self._token = token
         self._stt: STTClient = stt if stt is not None else DeepgramSTTClient()
+        self._tts: TTSClient = tts if tts is not None else DeepgramTTSClient()
+        self._speaking: set[str] = set()
         self._recorder = recorder
         self._recordings = RecordingAssembler()
         self._transcribing: set[str] = set()
@@ -245,6 +261,8 @@ class Connection:
             await self._on_agent_request(message)
         elif isinstance(message, AudioClip):
             await self._on_audio_clip(message)
+        elif isinstance(message, SpeechRequest):
+            await self._on_speech_request(message)
         elif isinstance(message, RecordStart):
             await self._on_record_start(message)
         elif isinstance(message, RecordStop):
@@ -266,8 +284,7 @@ class Connection:
         elif isinstance(message, Hello):
             await self.send(_error("VALIDATION_FAILED", "Already connected."))
         else:
-            # Valid protocol messages this milestone does not act on (speech requests, backend-to-
-            # extension types). Nothing is executed.
+            # Valid protocol messages this milestone does not act on (backend-to-extension types). Nothing is executed.
             await self.send(_error("VALIDATION_FAILED", "This message is not supported yet."))
         return True
 
@@ -550,6 +567,62 @@ class Connection:
             self._transcribing.discard(recording.id)
 
 
+    # --- text-to-speech (Task 9.1) ---
+    #
+    # The extension asks for speech only after the text is already in the Transcript. The answer is
+    # one ``speech_audio`` (``replyTo`` = the request's own id) or one ``error_message``. ``cancel``
+    # with the request id stops synthesis and sends nothing. Failure never affects any other path.
+
+    async def _on_speech_request(self, request: SpeechRequest) -> None:
+        if request.id == "" or len(request.id) > 128 or self.session.is_in_flight(request.id):
+            await self.send(_error("VALIDATION_FAILED", "That request id cannot be used.", reply_to=request.id))
+            return
+        try:
+            self._tts.check_ready()  # no task, and no call, without credentials
+        except TTSError as error:
+            self._log("speech refused", id=request.id, code=error.code)
+            await self.send(_error(error.code, error.message, recoverable=error.recoverable, reply_to=request.id))
+            return
+        if len(self._speaking) >= MAX_CONCURRENT_SYNTHESES:
+            await self.send(
+                _error("TTS_UNAVAILABLE", "Spoken playback is busy. Try again in a moment.", reply_to=request.id)
+            )
+            return
+        task = asyncio.create_task(self._run_speech(request))
+        try:
+            self.session.register(request.id, task)
+        except DuplicateRequestError:  # lost a race; never replace a live task
+            task.cancel()
+            await self.send(_error("VALIDATION_FAILED", "That request id cannot be used.", reply_to=request.id))
+            return
+        self._speaking.add(request.id)
+        task.add_done_callback(lambda finished: self._task_finished(request.id, finished))
+        self._log("speech task started", id=request.id, chars=len(request.text))
+
+    async def _run_speech(self, request: SpeechRequest) -> None:
+        try:
+            speech = await self._tts.synthesize(request.text)
+            audio = SpeechAudio(
+                version=PROTOCOL_VERSION,
+                type="speech_audio",
+                replyTo=request.id,
+                mimeType=speech.mime_type,
+                base64=base64.b64encode(speech.audio).decode("ascii"),
+            )
+            if await self.send(audio):
+                self._log("speech completed", id=request.id, size=len(speech.audio))
+        except asyncio.CancelledError:
+            raise  # cancelled work sends nothing
+        except TTSError as error:
+            self._log("speech failed", id=request.id, code=error.code)
+            await self.send(_error(error.code, error.message, recoverable=error.recoverable, reply_to=request.id))
+        except Exception as error:
+            self._log("speech crashed", id=request.id, error=type(error).__name__)
+            await self.send(_error("TTS_UNAVAILABLE", "Spoken playback failed unexpectedly.", reply_to=request.id))
+        finally:
+            self._speaking.discard(request.id)
+
+
 def create_app(
     *,
     agent: AgentResponder | None = None,
@@ -557,8 +630,12 @@ def create_app(
     capabilities: Capabilities | None = None,
     stt: STTClient | None = None,
     recorder: LocalRecorder | None = None,
+    tts: TTSClient | None = None,
 ) -> FastAPI:
-    """Build the app. ``agent``, ``capabilities``, ``auth_token``, ``stt`` and ``recorder`` are injectable.
+    """Build the app. ``agent``, ``capabilities``, ``auth_token``, ``stt``, ``recorder`` and ``tts`` are injectable.
+
+    Without an injected ``tts`` text-to-speech is Deepgram Aura (``DEEPGRAM_TTS_MODEL``); ``hello_ack``
+    reports ``capabilities.tts`` true only when that client has what it needs to make a call.
 
     Without an injected ``recorder`` the backend can record from the default microphone (through
     ``default_audio_input``). The microphone is never opened at startup or by a handshake: only a
@@ -572,6 +649,7 @@ def create_app(
     """
     chosen: list[AgentSelection] = []
     speech: STTClient = stt if stt is not None else DeepgramSTTClient()
+    voice: TTSClient = tts if tts is not None else DeepgramTTSClient()
     device = None if recorder is not None else default_audio_input()
     mic: LocalRecorder | None = recorder if recorder is not None else (LocalRecorder(device) if device else None)
 
@@ -589,7 +667,15 @@ def create_app(
                 ready = True
             except STTError:
                 ready = False
-        return (agent if agent is not None else chosen[0].agent), base.model_copy(update={"stt": bool(ready)})
+        speaks = getattr(voice, "configured", None)
+        if speaks is None:
+            try:
+                voice.check_ready()
+                speaks = True
+            except TTSError:
+                speaks = False
+        reported = base.model_copy(update={"stt": bool(ready), "tts": bool(speaks)})
+        return (agent if agent is not None else chosen[0].agent), reported
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -620,7 +706,7 @@ def create_app(
             # Read the default microphone's state without capturing anything.
             reported = reported.model_copy(update={"mic": await asyncio.to_thread(mic.status)})
         await websocket.accept()
-        await Connection(websocket, responder, _configured_token(auth_token), reported, speech, mic).serve()
+        await Connection(websocket, responder, _configured_token(auth_token), reported, speech, mic, voice).serve()
 
     return application
 

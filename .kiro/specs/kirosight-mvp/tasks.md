@@ -570,11 +570,11 @@ Scope guardrails taken from the approved spec:
   - Speak responses after their text is already in the Transcript, with playback in the webview and reliable interruption. TTS failure leaves the full text in place.
   - _Requirements: 6.3, 9.4, 9.5, 10.2, 15.3_
 
-  - [ ] 9.1 Implement Deepgram text-to-speech in the backend
+  - [x] 9.1 Implement Deepgram text-to-speech in the backend
     - Add a `TTSClient` interface and an `httpx`-based Deepgram Aura client (model from `DEEPGRAM_TTS_MODEL`, 10 s timeout, named error when `DEEPGRAM_API_KEY` is missing). Handle `speech_request` in `main.py`: answer with `speech_audio` or `error_message` `TTS_UNAVAILABLE`, support `cancel`, and report `capabilities.tts`.
     - _Requirements: 9.4, 9.5, 10.2, 17.5_
 
-  - [ ]* 9.2 Write Deepgram TTS tests
+  - [x]* 9.2 Write Deepgram TTS tests
     - With `httpx.MockTransport`: success, HTTP errors and a timeout map to the right outcomes; a missing credential makes no call; `cancel` stops an in-flight synthesis.
     - _Requirements: 9.5, 10.2, 17.5_
 

@@ -1,4 +1,7 @@
-"""Deepgram Nova-2 speech-to-text (Task 8.4; Requirements 9.1, 9.3, 10.1, 17.1, 17.5).
+"""Deepgram Nova-2 speech-to-text (Task 8.4) and Aura text-to-speech (Task 9.1).
+
+Requirements: 9.1, 9.3, 9.4, 9.5, 10.1, 10.2, 17.1, 17.5. The text-to-speech half (``TTSClient``,
+``DeepgramTTSClient``) is at the end of this module and follows the same rules as the STT half.
 
 ``STTClient`` is the seam the WebSocket handler depends on. ``DeepgramSTTClient`` implements it with
 ``httpx`` against Deepgram's pre-recorded ``/v1/listen`` endpoint (complete-clip STT, design D9).
@@ -25,6 +28,7 @@ import logging
 import os
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Final, Protocol
 
 import httpx
@@ -43,6 +47,17 @@ __all__ = [
     "DeepgramSTTClient",
     "STTClient",
     "STTError",
+    "DEEPGRAM_SPEAK_URL",
+    "DEFAULT_TTS_MODEL",
+    "MAX_AUDIO_BYTES",
+    "MAX_TTS_CHARS",
+    "TTS_AUDIO_ENCODING",
+    "TTS_MODEL_VARIABLE",
+    "TTS_TIMEOUT_SECONDS",
+    "DeepgramTTSClient",
+    "SynthesizedSpeech",
+    "TTSClient",
+    "TTSError",
 ]
 
 logger = logging.getLogger("kirosight.backend.speech")
@@ -245,3 +260,194 @@ class DeepgramSTTClient:
                 STTError("STT_UNAVAILABLE", "Speech recognition returned an unusable answer."),
             )
         return text
+
+
+# ---------------------------------------------------------------------------------------------------
+# Text-to-speech: Deepgram Aura (Task 9.1; Requirements 9.4, 9.5, 10.2, 17.5)
+#
+# Same rules as the STT client above: key read from the environment per call and never stored, no
+# call without it (``CREDENTIAL_MISSING`` naming the variable), one attempt with a hard 10 s limit,
+# no redirects, a capped response, and fixed-sentence errors that never copy provider text. Failures
+# are ``TTS_UNAVAILABLE`` (``TIMEOUT`` for a timeout); the extension keeps the response text and adds
+# its own "spoken playback is unavailable" note (Req 9.5, 10.2), so a failure here never costs text.
+# ---------------------------------------------------------------------------------------------------
+
+TTS_MODEL_VARIABLE: Final = "DEEPGRAM_TTS_MODEL"
+DEFAULT_TTS_MODEL: Final = "aura-asteria-en"
+DEEPGRAM_SPEAK_URL: Final = "https://api.deepgram.com/v1/speak"
+
+#: Requirement 9.5 / 10.2: synthesis must answer within 10 seconds.
+TTS_TIMEOUT_SECONDS: Final = 10.0
+
+#: Audio is requested as MP3 (a webview ``<audio>`` element plays it everywhere).
+TTS_AUDIO_ENCODING: Final = "mp3"
+
+#: Deepgram's documented per-request text limit for Aura.
+MAX_TTS_CHARS: Final = 2000
+
+#: Synthesized speech for at most ``MAX_TTS_CHARS`` characters is a few MiB of MP3 at most.
+MAX_AUDIO_BYTES: Final = 8 * 1024 * 1024
+
+
+class TTSError(Exception):
+    """A text-to-speech failure. ``message`` is a fixed, safe sentence for the user."""
+
+    def __init__(self, code: ErrorCode, message: str, *, recoverable: bool = True) -> None:
+        super().__init__(message)
+        self.code: ErrorCode = code
+        self.message = message
+        self.recoverable = recoverable
+
+
+@dataclass(frozen=True)
+class SynthesizedSpeech:
+    """One synthesized clip: the audio bytes and their (``audio/*``) MIME type."""
+
+    audio: bytes
+    mime_type: str
+
+
+class TTSClient(Protocol):
+    """What the WebSocket handler needs from a text-to-speech provider."""
+
+    def check_ready(self) -> None:
+        """Raise :class:`TTSError` (``CREDENTIAL_MISSING`` ...) if a call could not be made. No I/O."""
+        ...
+
+    async def synthesize(self, text: str) -> SynthesizedSpeech:
+        """Return the spoken audio for ``text``, or raise :class:`TTSError`."""
+        ...
+
+
+def _tts_fail(category: str, error: TTSError) -> TTSError:
+    """Log a fixed category (metadata only) and hand back the error to raise."""
+    logger.warning("synthesis failed %s", redact(format_metadata(category=category, code=error.code)))
+    return error
+
+
+class DeepgramTTSClient:
+    """Deepgram Aura over ``httpx``. Holds no credential: the key is read from the environment per call."""
+
+    def __init__(
+        self,
+        *,
+        environ: Mapping[str, str] | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
+        timeout_seconds: float = TTS_TIMEOUT_SECONDS,
+        url: str = DEEPGRAM_SPEAK_URL,
+    ) -> None:
+        self._environ = environ
+        self._transport = transport
+        self._timeout = timeout_seconds
+        self._url = url
+
+    def _env(self, name: str) -> str:
+        source = os.environ if self._environ is None else self._environ
+        return (source.get(name) or "").strip()
+
+    def _readiness_error(self) -> tuple[str, TTSError] | None:
+        """Why a call cannot be made, as (log category, error); None when it can. No I/O, no logging."""
+        if self._env(API_KEY_VARIABLE) == "":
+            return "credential_missing", TTSError(
+                "CREDENTIAL_MISSING",
+                f"Spoken playback is not configured: {API_KEY_VARIABLE} is missing.",
+                recoverable=False,
+            )
+        raw = self._env(TTS_MODEL_VARIABLE)
+        if raw != "" and _MODEL_PATTERN.fullmatch(raw) is None:
+            # A malformed model name is a configuration problem. The value is never repeated.
+            return "bad_model", TTSError(
+                "TTS_UNAVAILABLE",
+                f"Spoken playback is not configured: {TTS_MODEL_VARIABLE} is not a valid model name.",
+                recoverable=False,
+            )
+        return None
+
+    def check_ready(self) -> None:
+        problem = self._readiness_error()
+        if problem is not None:
+            raise _tts_fail(*problem)
+
+    @property
+    def configured(self) -> bool:
+        """True when a call could be made. Reports nothing about whether Deepgram would accept it."""
+        return self._readiness_error() is None
+
+    def _model(self) -> str:
+        return self._env(TTS_MODEL_VARIABLE) or DEFAULT_TTS_MODEL
+
+    async def synthesize(self, text: str) -> SynthesizedSpeech:
+        self.check_ready()  # no network call without a usable configuration
+        api_key = self._env(API_KEY_VARIABLE)
+        model = self._model()
+
+        if not isinstance(text, str) or text.strip() == "":
+            raise _tts_fail("empty_text", TTSError("TTS_UNAVAILABLE", "There is no text to speak."))
+        if len(text) > MAX_TTS_CHARS:
+            raise _tts_fail("text_too_long", TTSError("TTS_UNAVAILABLE", "That text is too long to speak."))
+
+        try:
+            return await asyncio.wait_for(self._request(text, model, api_key), timeout=self._timeout)
+        except (TimeoutError, httpx.TimeoutException):
+            raise _tts_fail("timeout", TTSError("TIMEOUT", "Spoken playback did not answer in time.")) from None
+        except TTSError:
+            raise
+        except httpx.HTTPError:
+            raise _tts_fail(
+                "network", TTSError("TTS_UNAVAILABLE", "Spoken playback could not be reached.")
+            ) from None
+        except Exception:
+            raise _tts_fail(
+                "unexpected", TTSError("TTS_UNAVAILABLE", "Spoken playback failed unexpectedly.")
+            ) from None
+
+    async def _request(self, text: str, model: str, api_key: str) -> SynthesizedSpeech:
+        headers = {
+            "Authorization": f"Token {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "audio/*",
+        }
+        async with httpx.AsyncClient(
+            transport=self._transport, timeout=self._timeout, follow_redirects=False
+        ) as client:
+            async with client.stream(
+                "POST",
+                self._url,
+                params={"model": model, "encoding": TTS_AUDIO_ENCODING},
+                headers=headers,
+                content=json.dumps({"text": text}).encode("utf-8"),
+            ) as response:
+                self._check_status(response.status_code)
+                mime_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                if _BASE_MIME_PATTERN.fullmatch(mime_type) is None:
+                    raise _tts_fail("bad_content_type", self._unusable())
+                received = bytearray()
+                async for part in response.aiter_bytes():
+                    received.extend(part)
+                    if len(received) > MAX_AUDIO_BYTES:
+                        raise _tts_fail("response_too_large", self._unusable())
+                if len(received) == 0:
+                    raise _tts_fail("empty_audio", self._unusable())
+                return SynthesizedSpeech(audio=bytes(received), mime_type=mime_type)
+
+    @staticmethod
+    def _unusable() -> TTSError:
+        return TTSError("TTS_UNAVAILABLE", "Spoken playback returned an unusable answer.")
+
+    @staticmethod
+    def _check_status(status: int) -> None:
+        if 200 <= status < 300:
+            return
+        if status in (401, 403):
+            error = TTSError(
+                "TTS_UNAVAILABLE", "Spoken playback rejected the configured credential.", recoverable=False
+            )
+        elif status in (408, 504):
+            error = TTSError("TIMEOUT", "Spoken playback did not answer in time.")
+        elif status == 429:
+            error = TTSError("TTS_UNAVAILABLE", "Spoken playback is busy. Try again in a moment.")
+        elif status in (400, 413, 422):
+            error = TTSError("TTS_UNAVAILABLE", "Spoken playback could not process that text.")
+        else:
+            error = TTSError("TTS_UNAVAILABLE", "Spoken playback is unavailable.")
+        raise _tts_fail(f"http_{status}", error)

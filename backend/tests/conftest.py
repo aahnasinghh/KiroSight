@@ -20,6 +20,7 @@ def _offline_speech_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     """A Deepgram key in a developer's shell must never make a test report or use speech-to-text."""
     monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
     monkeypatch.delenv("DEEPGRAM_STT_MODEL", raising=False)
+    monkeypatch.delenv("DEEPGRAM_TTS_MODEL", raising=False)
 
 
 @pytest.fixture(autouse=True)
