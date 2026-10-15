@@ -558,3 +558,70 @@ describe('what the controller is allowed to depend on', () => {
     expect(source).not.toMatch(/console\.|logger|appendLine/);
   });
 });
+
+describe('a webview with nothing to fall back to is not written off (Req 18.6, Property 28)', () => {
+  const webviewOnly = () => build({ kinds: ['webview'], preferred: 'webview' });
+  const webviewCaps = caps({ mic: 'not_applicable' });
+
+  it.each([
+    ['denied', 'mic_denied', 'denied'],
+    ['unavailable', 'mic_unavailable', 'unavailable'],
+    ['unsupported', 'unsupported', 'unavailable'],
+  ] as const)('stays selectable after "%s", so granting access later works without a restart', async (reason, cause, micState) => {
+    const { controller, webview, handled } = webviewOnly();
+    webview.availability = { ok: false, reason };
+
+    const first = await controller.initialize(webviewCaps);
+
+    expect(first).toMatchObject({ phase: 'unavailable', cause, micState, webviewUnreliable: false, kind: null });
+    expect(first.text).toContain('You can keep typing.');
+
+    webview.availability = { ok: true }; // access granted; same controller, no reload
+    const second = await controller.initialize(webviewCaps);
+
+    expect(second).toMatchObject({ phase: 'idle', kind: 'webview', webviewUnreliable: false });
+    expect(await controller.startListening()).toEqual({ status: 'listening' });
+    expect(webview.count('start')).toBe(1);
+    expect(handled).toEqual([]); // nothing was routed by asking
+  });
+
+  it('a refusal at the start of an attempt keeps push-to-talk usable and asks again on the next press', async () => {
+    const { controller, webview } = webviewOnly();
+    await controller.initialize(webviewCaps);
+    webview.availability = { ok: false, reason: 'denied' };
+
+    expect(await controller.startListening()).toEqual({ status: 'failed', reason: 'not_available' });
+
+    expect(webview.count('start')).toBe(0); // nothing recorded
+    expect(controller.status).toMatchObject({ phase: 'idle', kind: 'webview', webviewUnreliable: false, micState: 'denied' });
+
+    webview.availability = { ok: true };
+    expect(await controller.startListening()).toEqual({ status: 'listening' });
+    expect(webview.count('start')).toBe(1);
+  });
+
+  it('still treats a webview that gives no audio as unreliable for the session', async () => {
+    const { controller, scheduler } = webviewOnly();
+    await controller.initialize(webviewCaps);
+    await controller.startListening();
+
+    scheduler.advance(FIRST_SAMPLE_WATCHDOG_MS);
+
+    expect(controller.status).toMatchObject({ phase: 'unavailable', cause: 'webview_unreliable', webviewUnreliable: true });
+  });
+
+  it('still falls back for the session when a backend-local input exists', async () => {
+    const { controller, webview } = await webviewReadyForFallback();
+    webview.availability = { ok: false, reason: 'denied' };
+
+    const status = await controller.initialize(caps());
+
+    expect(status).toMatchObject({ phase: 'idle', kind: 'backend_local', webviewUnreliable: true });
+  });
+
+  async function webviewReadyForFallback() {
+    const harness = build({ preferred: 'webview' });
+    await harness.controller.initialize(caps());
+    return harness;
+  }
+});

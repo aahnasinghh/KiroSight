@@ -547,19 +547,19 @@ Scope guardrails taken from the approved spec:
     - Route `transcription_result` to `InputPipeline.handle(text, 'voice')` and record the text as the user's query. On a transcription failure, timeout or empty result: route nothing, add a Transcript entry within 1 s saying the voice input could not be processed, keep the typed draft, and leave push-to-talk enabled. Implement the push-to-talk toggle (Enter or Space to start and stop, Listening and Processing labels). Implement the voice states (granted, undetermined, denied, unavailable, granted later) so that `kirosight.activate` always opens the panel, begins listening only when the microphone is known to be granted and speech is available, offers a keyboard-operable permission request otherwise, and records that voice is unavailable. When initialization is not finished within 10 s, add the "voice unavailable for the session" entry and keep push-to-talk focusable with visible text. Typed input and local features stay operable under every voice failure.
     - _Requirements: 9.2, 9.3, 10.1, 10.3, 10.4, 10.5, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6, 19.7_
 
-  - [ ]* 8.10 Write property test for typed and voice equivalence
+  - [x]* 8.10 Write property test for typed and voice equivalence
     - **Property 11: Typed and voice input take the same path**
     - **Validates: Requirements 8.1, 8.2, 9.2, 19.7**
 
-  - [ ]* 8.11 Write property test for activation under voice states
+  - [x]* 8.11 Write property test for activation under voice states
     - **Property 28: Activation never fails because of voice**
     - **Validates: Requirements 18.1, 18.2, 18.3, 18.4, 18.5, 18.6**
 
-  - [ ]* 8.12 Write timing and substitution tests
+  - [x]* 8.12 Write timing and substitution tests
     - With a fake clock: STT with no response for 10 s yields the Transcript entry within 1 s with the draft preserved and push-to-talk enabled; initialization not finished by 10 s yields the "unavailable for the session" entry; recording stops at 60 s; no non-zero audio sample within 5 s selects the backend-local implementation; the same `VoiceController` tests pass against fake `WebviewVoiceInput` and `BackendLocalVoiceInput` with identical routing output.
     - _Requirements: 9.1, 9.3, 10.1, 10.3, 19.5, 19.6_
 
-  - [ ] 8.13 Wire voice into the extension
+  - [x] 8.13 Wire voice into the extension
     - In `extension.ts`, construct `VoiceController` with the selected `VoiceInput`, honor `kirosight.voice.enabled`, connect it to the webview provider and the backend client, and make `kirosight.activate` use the voice-aware behavior from task 8.9. Update `docs/env-vars.md` for the Deepgram variables.
     - _Requirements: 9.7, 18.1, 18.2, 18.5, 18.6_
 

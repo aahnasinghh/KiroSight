@@ -46,6 +46,12 @@ export interface WebviewProviderDeps {
     /** Escape: abandon any recording or pending transcription. */
     onInterrupt?(): void;
   };
+  /**
+   * The one-time system notice recorded when the panel first opens. Left out, it is the original
+   * "voice is unavailable until voice support is implemented" text. `null` records no notice (voice
+   * is running and reports its own state); a string records that text (for example, voice is off).
+   */
+  readonly voiceNotice?: string | null;
 }
 
 type SubmitTextMessage = Extract<WebviewToHostMessage, { type: 'submit_text' }>;
@@ -130,7 +136,10 @@ export class WebviewProvider implements vscode.Disposable {
       return;
     }
     this.voiceNoticeRecorded = true;
-    this.deps.transcript.append('system', DEFAULT_VOICE.reasonText ?? '');
+    const notice = this.deps.voiceNotice === undefined ? (DEFAULT_VOICE.reasonText ?? '') : this.deps.voiceNotice;
+    if (notice !== null && notice !== '') {
+      this.deps.transcript.append('system', notice);
+    }
   }
 
   private createPanel(): vscode.WebviewPanel {

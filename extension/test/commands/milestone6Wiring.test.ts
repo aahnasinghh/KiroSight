@@ -189,12 +189,14 @@ describe('Task 6.19 status text', () => {
     factory.last.triggerOpen();
     factory.last.triggerJson(HELLO_ACK);
     await flush();
-    expect(viewStates().at(-1)!.status).toBe(`Idle. ${STUB_STATUS}`);
+    // The stub backend reports no speech recognition, so the voice layer (Task 8.13) says so in the
+    // status label; the backend part of the text is unchanged.
+    expect(viewStates().at(-1)!.status).toBe(`Voice unavailable. ${STUB_STATUS}`);
 
     factory.last.triggerClose();
     await flush();
     const afterLoss = viewStates().at(-1)!.status;
-    expect(afterLoss).toBe('Idle. Backend: disconnected');
+    expect(afterLoss).toBe('Voice unavailable. Backend: disconnected');
     expect(afterLoss).not.toMatch(/Bedrock|STT|TTS|Mic/);
   });
 
@@ -217,7 +219,7 @@ describe('Task 6.19 status text', () => {
 
     await panel().receive({ type: 'ready' });
 
-    expect(viewStates().at(-1)!.status).toBe(`Idle. ${STUB_STATUS}`);
+    expect(viewStates().at(-1)!.status).toBe(`Voice unavailable. ${STUB_STATUS}`);
   });
 });
 

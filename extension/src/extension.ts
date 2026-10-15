@@ -29,6 +29,9 @@ import { read as readTestCommand } from './testing/testCommandConfig';
 import { TestRunStore } from './testing/testRunStore';
 import { TestRunner } from './testing/testRunner';
 import { TranscriptStore } from './transcript/transcriptStore';
+import { readVoiceEnabled } from './voice/voiceConfig';
+import { resolveStatusKind, type VoiceSessionView } from './voice/voiceSession';
+import { VOICE_DISABLED_TEXT, VOICE_DISABLED_VIEW, VoiceWiring } from './voice/voiceWiring';
 import { createViewModel, type ViewModel } from './webview/viewModel';
 import { WebviewProvider } from './webview/webviewProvider';
 
@@ -46,6 +49,8 @@ export interface ActivationOverrides {
   readonly socketFactory?: WebSocketFactory;
   /** Lets tests drive reconnect and timeout timers without real time. */
   readonly scheduler?: Scheduler;
+  /** Lets tests drive the voice timers (10 s start, 10 s speech, 60 s cap, 5 s watchdog) without real time. */
+  readonly voiceScheduler?: Scheduler;
 }
 
 export function activate(context: vscode.ExtensionContext, overrides: ActivationOverrides = {}): void {
@@ -143,22 +148,32 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
   let webviewProvider: WebviewProvider | undefined;
   let panelOpen = false;
 
+  // Voice is an additive layer (Req 9.7): when the setting is off nothing here is constructed, the
+  // panel says so, and typed text and every local feature work exactly the same.
+  const voiceEnabled = readVoiceEnabled();
+  let voice: VoiceWiring | undefined;
+  /** The voice part of what the panel shows. The pipeline's own view model knows nothing about voice. */
+  const voiceView = (): VoiceSessionView => voice?.session.view ?? VOICE_DISABLED_VIEW;
+
   const backendStatusText = (): string => formatBackendStatus({
     state: connectionManager.state,
     capabilities: backendClient.capabilities,
     urlValid: backendUrlValid,
   });
 
-  /** Adds the live backend connection summary to the status text of a view model. */
-  const withBackendStatus = (model: ViewModel): ViewModel => createViewModel({
-    statusKind: model.statusKind,
-    latest: model.latest,
-    pendingConfirmation: model.pendingConfirmation,
-    voice: model.voice,
-    listening: model.listening,
-    transcript: model.transcript,
-    backendStatus: backendStatusText(),
-  });
+  /** Adds the live backend connection summary and the voice state to a view model. */
+  const withBackendStatus = (model: ViewModel): ViewModel => {
+    const view = voiceView();
+    return createViewModel({
+      statusKind: resolveStatusKind(model.statusKind, view),
+      latest: model.latest,
+      pendingConfirmation: model.pendingConfirmation,
+      voice: view.voice,
+      listening: view.listening,
+      transcript: model.transcript,
+      backendStatus: backendStatusText(),
+    });
+  };
 
   const inputPipeline = new InputPipeline({
     transcript,
@@ -186,25 +201,49 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
    * The transcript store and the ConfirmationManager are authoritative, so a snapshot (for example
    * on ready after the panel was reopened) always shows the live pending prompt and backend state.
    */
-  const currentSnapshot = (): ViewModel => createViewModel({
-    statusKind: currentStatusKind(),
-    latest: currentViewModel.latest,
-    pendingConfirmation: confirmationController.pendingConfirmation(),
-    voice: currentViewModel.voice,
-    listening: currentViewModel.listening,
-    transcript: transcript.getEntries(),
-    backendStatus: backendStatusText(),
-  });
+  const currentSnapshot = (): ViewModel => {
+    const view = voiceView();
+    return createViewModel({
+      statusKind: resolveStatusKind(currentStatusKind(), view),
+      latest: currentViewModel.latest,
+      pendingConfirmation: confirmationController.pendingConfirmation(),
+      voice: view.voice,
+      listening: view.listening,
+      transcript: transcript.getEntries(),
+      backendStatus: backendStatusText(),
+    });
+  };
+
+  if (voiceEnabled) {
+    voice = new VoiceWiring({
+      client: backendClient,
+      transcript,
+      // Spoken text takes the same door as typed text: validated, routed and gated like any input.
+      pipeline: inputPipeline,
+      panel: {
+        get isOpen() { return webviewProvider?.isOpen ?? false; },
+        sendCaptureCommand: (type) => webviewProvider?.sendCaptureCommand(type) ?? false,
+        notifyBackendUnavailable: (kind, message) => webviewProvider?.notifyBackendUnavailable(kind, message),
+      },
+      // A new Transcript entry, status or listening state reaches an open panel at once.
+      onChange: () => webviewProvider?.updateViewModel(currentSnapshot()),
+      scheduler: overrides.voiceScheduler,
+    });
+  }
 
   webviewProvider = new WebviewProvider({
     extensionUri: context.extensionUri,
     pipeline: inputPipeline,
     transcript,
     getViewModel: () => currentSnapshot(),
+    ...(voice === undefined ? {} : { voice: voice.hooks }),
+    voiceNotice: voice === undefined ? VOICE_DISABLED_TEXT : null,
     // The connection follows the panel: it opens with the panel and closes with it. The token is
     // loaded first so the very first handshake already carries it.
     onPanelOpenChange: (open) => {
       panelOpen = open;
+      if (open) voice?.panelOpened();
+      else voice?.panelClosed(); // before the connection closes, so closing is not reported as a lost backend
       void tokenLoaded.then(() => connectionManager.setPanelOpen(panelOpen));
     },
   });
@@ -226,7 +265,9 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
   };
 
   const commandRegistrations = registerCommands({
-    activate: () => panel.openOrFocus(),
+    // Voice-aware (Req 18): the panel opens or takes focus first and always; listening begins only
+    // when voice is known to be usable. Whatever happens with voice, this never fails.
+    activate: () => (voice === undefined ? panel.openOrFocus() : voice.activate(() => panel.openOrFocus())),
     ask: () => panel.openOrFocus(),
     whereAmI: async () => { await inputPipeline.handle(WHERE_AM_I_UTTERANCE, 'typed'); },
     describeErrors: async () => { await inputPipeline.handle(DESCRIBE_ERRORS_UTTERANCE, 'typed'); },
@@ -255,6 +296,8 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     editorAdapter,
     testRunner,
     vscode.Disposable.from(
+      // First, so the microphone is released before anything else shuts down.
+      { dispose: () => voice?.dispose() },
       connectionManager,
       backendStateSubscription,
       actionRequestSubscription,

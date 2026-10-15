@@ -30,11 +30,14 @@ import {
  */
 
 const COMMAND = 'npm test';
+// These tests are about reasoning and actions, not voice. The backend reports working speech
+// recognition and microphone so the voice layer (Task 8.13) stays ready and leaves the status label
+// to the agent and confirmation states under test.
 const HELLO_ACK = {
   version: 1,
   type: 'hello_ack',
   supportedVersions: [1],
-  capabilities: { bedrock: false, stt: false, tts: false, mic: 'not_applicable' },
+  capabilities: { bedrock: false, stt: true, tts: false, mic: 'available' },
 };
 const FILE = '/ws/src/auth.ts';
 const LINES = [

@@ -61,3 +61,14 @@ When webview capture is unavailable (Spike D), the backend records from the mach
 4. Send `record_start` with an `id`, speak for a few seconds, then send `record_stop` with the same `id`. Expect one `transcription_result` with that `replyTo`.
 5. Repeat with Windows Settings, Privacy and security, Microphone switched off for desktop apps. Expect `MIC_DENIED` (or `MIC_UNAVAILABLE` if Windows reports it differently), and note which, because the denial detection is a heuristic.
 6. Start a recording and close the client without sending `record_stop`; confirm the Windows microphone-in-use indicator goes away.
+
+## Voice in the extension (Task 8.13)
+
+Voice is wired into the extension and is an additive layer: typed text, keyboard control and every local command work whatever happens to it.
+
+- **`kirosight.voice.enabled`** (VS Code setting, default `true`). When `false`, no voice code is constructed, the panel's push-to-talk note says voice is turned off, and `kirosight.activate` only opens or focuses the panel. It is read when the extension starts, so reload the window after changing it. It is a setting, not an environment variable, and holds no secret.
+- **Deepgram variables are read by the backend only.** `DEEPGRAM_API_KEY` (required for speech recognition) and `DEEPGRAM_STT_MODEL` (optional, default `nova-2`) go in `backend/.env` or the backend's environment. The extension and the webview never see them. Without `DEEPGRAM_API_KEY` the backend reports `capabilities.stt = false`, the panel says "speech recognition is not set up", and nothing is recorded.
+- **Which microphone.** The backend records (`sounddevice`, see "Backend-local microphone" above), because the webview refused the microphone in Kiro (Spike D). The webview is only a fallback: it is asked once, on an explicit push-to-talk press, and if it fails it is not tried again that session.
+- **`kirosight.activate`** (Command Palette, or `Ctrl+Alt+K` on Windows and Linux, or any key you assign) always opens or focuses the panel first. It begins listening only when voice is already known to be ready (the backend is connected and reports speech recognition and a microphone). If the panel was closed, the first invocation opens it and starts the connection; once the panel shows "Voice is ready", invoke it again or press push-to-talk. Nothing ever records at startup, when the panel opens, or when the backend connects.
+- **Stopping.** Press push-to-talk again, press `Escape` in the panel, close the panel, or lose the backend connection: the recording stops and the microphone is released. A recording also ends by itself at 60 seconds.
+- **Where spoken text goes.** Recognized text is added to the Transcript as your query (marked as spoken) and handled by the same pipeline as typed text, including confirmation for anything that changes state.

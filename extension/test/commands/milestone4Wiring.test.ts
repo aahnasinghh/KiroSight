@@ -5,9 +5,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activate } from '../../src/extension';
 import { BACKEND_UNAVAILABLE_TEXT } from '../../src/pipeline/inputPipeline';
-import { DEFAULT_VOICE } from '../../src/webview/viewModel';
+import { VOICE_INIT_BUDGET_MS, describeVoiceStatus } from '../../src/voice/voiceController';
+import { VOICE_DISABLED_TEXT } from '../../src/voice/voiceWiring';
 import { fakeBackendOverrides } from '../mocks/backendOverrides';
-import { Uri, resetVscodeMock, vscodeMockState, type MockWebviewPanel } from '../mocks/vscode';
+import { Uri, resetVscodeMock, setMockConfiguration, vscodeMockState, type MockWebviewPanel } from '../mocks/vscode';
 
 interface PostedEntry { seq: number; role: string; text: string; source?: string }
 interface PostedViewState { type: string; statusKind: string; transcript: PostedEntry[]; latest: string | null }
@@ -124,12 +125,38 @@ describe('Milestone 4 wiring', () => {
       ['kirosight', 'No file is open.'],
       ['user', 'what errors are there'],
       ['kirosight', 'No diagnostics found.'],
-      ['system', DEFAULT_VOICE.reasonText],
+      // Voice is wired since Task 8.13, so there is no placeholder "not implemented" notice: voice
+      // reports its own state, and says nothing until it has something true to say.
     ]);
     expect(viewStates().at(-1)).toMatchObject({ latest: 'No diagnostics found.' });
   });
 
   it('records the voice-unavailable notice once and never loses it', async () => {
+    // The original scenario, now with the real voice layer: with no backend to answer, voice states
+    // once, when its 10 s start budget ends, that it is unavailable for the session.
+    const harness = fakeBackendOverrides();
+    activate(
+      { subscriptions: [], extensionUri: Uri.file('/ext') } as unknown as Parameters<typeof activate>[0],
+      harness.overrides,
+    );
+    await command('kirosight.activate')();
+    await command('kirosight.activate')();
+    await command('kirosight.ask')();
+    harness.voiceScheduler.advance(VOICE_INIT_BUDGET_MS);
+
+    await command('kirosight.whereAmI')();
+    const transcript = await readyTranscript();
+    const text = describeVoiceStatus({ phase: 'unavailable', cause: 'init_timeout', micState: 'unknown' });
+    const notices = transcript.filter((entry) => entry.text === text);
+
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ role: 'system' });
+    expect(notices[0]).not.toHaveProperty('source');
+    expect(viewStates().at(-1)!.transcript.some((entry) => entry.text === text)).toBe(true);
+  });
+
+  it('records the "voice is turned off" notice once when the setting is off, and never loses it', async () => {
+    setMockConfiguration({ 'kirosight.voice.enabled': false });
     boot();
     await command('kirosight.activate')();
     await command('kirosight.activate')();
@@ -137,13 +164,13 @@ describe('Milestone 4 wiring', () => {
 
     await command('kirosight.whereAmI')();
     const transcript = await readyTranscript();
-    const notices = transcript.filter((entry) => entry.text === DEFAULT_VOICE.reasonText);
+    const notices = transcript.filter((entry) => entry.text === VOICE_DISABLED_TEXT);
 
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({ role: 'system' });
     expect(notices[0]).not.toHaveProperty('source');
     expect(viewStates().every((state) =>
-      state.transcript.some((entry) => entry.text === DEFAULT_VOICE.reasonText))).toBe(true);
+      state.transcript.some((entry) => entry.text === VOICE_DISABLED_TEXT))).toBe(true);
   });
 
   it('shares one transcript and pipeline between the webview and direct commands', async () => {

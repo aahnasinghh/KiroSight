@@ -304,6 +304,13 @@ export class VoiceController {
       }
       this.micState = micStateOf(result.reason);
       if (input.kind === 'webview' && WEBVIEW_FAILURES.includes(result.reason)) {
+        if (!this.hasOtherInput('webview')) {
+          // Nothing to fall back to, so the webview must stay selectable: permission granted or a
+          // microphone connected later has to work on the next activation (Req 18.6, Property 28).
+          this.active = null;
+          this.setPhase('unavailable', null, causeOf(result.reason));
+          return;
+        }
         this.webviewUnreliable = true;
         continue;
       }
@@ -318,6 +325,11 @@ export class VoiceController {
     }
     this.active = null;
     this.setPhase('unavailable', null, 'webview_unreliable');
+  }
+
+  /** Whether an implementation other than `kind` exists to fall back to. */
+  private hasOtherInput(kind: VoiceKind): boolean {
+    return (['webview', 'backend_local'] as const).some((other) => other !== kind && this.deps.inputs[other] !== undefined);
   }
 
   private select(): VoiceSelection {
@@ -356,6 +368,11 @@ export class VoiceController {
       if (!availability.ok) {
         this.micState = micStateOf(availability.reason);
         if (input.kind === 'webview' && WEBVIEW_FAILURES.includes(availability.reason)) {
+          if (!this.hasOtherInput('webview')) {
+            // No fallback exists, so the webview is not written off: the next press asks again.
+            this.setPhase('idle', input, null);
+            return { status: 'failed', reason: 'not_available' };
+          }
           return this.fallBackFromWebview();
         }
         if (availability.reason === 'undetermined' && input.kind === 'webview') {
