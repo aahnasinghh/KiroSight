@@ -14,6 +14,7 @@ import type {
   RecordStart,
   RecordStop,
   SpeechAudio,
+  SpeechRequest,
   TranscriptionResult,
   WireActionResult,
 } from '../protocol/messages';
@@ -429,6 +430,49 @@ export class BackendClient {
     }
   }
 
+  /**
+   * Asks the backend to speak `text` (Task 9.3). Returns false, having sent nothing, when the
+   * connection is not usable or the frame does not validate. A speech request is never queued and
+   * never replayed after a reconnect. The text is data: it is sent as written and never logged.
+   * The answer is one `speech_audio` or one `error_message`, both delivered through onEvent.
+   */
+  public sendSpeechRequest(request: { readonly id: string; readonly text: string; readonly replyTo?: string }): boolean {
+    if (!this.isUsable()) return false;
+    const message: SpeechRequest = {
+      version: PROTOCOL_VERSION,
+      type: 'speech_request',
+      id: request.id,
+      text: request.text,
+      ...(request.replyTo !== undefined ? { replyTo: request.replyTo } : {}),
+    };
+    const serialized = this.serialize(message);
+    if (serialized === undefined) return false;
+    try {
+      this.requireSocket().send(serialized);
+      return true;
+    } catch {
+      this.logger?.warn('Speech request could not be sent');
+      return false;
+    }
+  }
+
+  /**
+   * Tells the backend to stop synthesizing the speech request `id`. Returns false, having sent
+   * nothing, when the connection is not usable. The backend sends no reply to a cancel.
+   */
+  public cancelSpeechRequest(id: string): boolean {
+    if (!this.isUsable()) return false;
+    const cancel: Cancel = { version: PROTOCOL_VERSION, type: 'cancel', targetId: id };
+    const serialized = this.serialize(cancel);
+    if (serialized === undefined) return false;
+    try {
+      this.requireSocket().send(serialized);
+      return true;
+    } catch {
+      this.logger?.warn('Speech cancel could not be sent');
+      return false;
+    }
+  }
   /**
    * Cancels an in-flight request: fails it locally once, clears its timer and tells the backend.
    * Idempotent. A request that is not in flight (already settled, timed out or cancelled) is

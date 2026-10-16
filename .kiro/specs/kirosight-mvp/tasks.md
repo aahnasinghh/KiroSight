@@ -578,7 +578,7 @@ Scope guardrails taken from the approved spec:
     - With `httpx.MockTransport`: success, HTTP errors and a timeout map to the right outcomes; a missing credential makes no call; `cancel` stops an in-flight synthesis.
     - _Requirements: 9.5, 10.2, 17.5_
 
-  - [ ] 9.3 Implement the SpeechController in the extension host
+  - [x] 9.3 Implement the SpeechController in the extension host
     - Implement `voice/speechController.ts`: after a response is appended to the Transcript (text first), send a `speech_request` when speech is active; forward `speech_audio` to the webview as `play_audio`; require playback to begin within 10 s; on failure or timeout keep the full text and add a separate Transcript entry within 1 s saying spoken playback is unavailable. Speak the confirmation prompt, including action name, target and change, when speech is active, and again on REPEAT_CONFIRMATION. A Bedrock error is spoken as well as shown.
     - _Requirements: 6.3, 9.4, 9.5, 10.2, 13.4, 15.3_
 

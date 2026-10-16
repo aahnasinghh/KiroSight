@@ -119,6 +119,51 @@ export class WebviewProvider implements vscode.Disposable {
     return true;
   }
 
+  /**
+   * Hands one synthesized clip to an open panel as `play_audio` (Task 9.3). Returns false, having
+   * sent nothing, when no panel is open, the message does not validate, or posting throws.
+   *
+   * `webview.postMessage` returns a Thenable that resolves to false when the webview did not
+   * receive the message (for example it was disposed) and may reject. A true return here therefore
+   * means only "handed over"; when delivery turns out to have failed, `onUndelivered` is called
+   * once, as soon as that is known. The panel plays the clip only when it arrives; playing is
+   * Task 9.4. The audio is never logged or stored here.
+   */
+  public sendPlayAudio(
+    audio: { readonly id: string; readonly mimeType: string; readonly base64: string },
+    onUndelivered?: () => void,
+  ): boolean {
+    if (!this.panel) {
+      return false;
+    }
+    const message: HostToWebviewMessage = { type: 'play_audio', ...audio };
+    if (!validateHostToWebviewMessage(message).ok) {
+      return false;
+    }
+
+    let delivery: Promise<boolean>;
+    try {
+      delivery = Promise.resolve(this.panel.webview.postMessage(message));
+    } catch {
+      return false;
+    }
+    let reported = false;
+    const undelivered = (): void => {
+      if (reported) return;
+      reported = true;
+      try {
+        onUndelivered?.();
+      } catch {
+        // A failure observer must never become an unhandled rejection.
+      }
+    };
+    delivery.then(
+      (delivered) => { if (delivered === false) undelivered(); },
+      () => undelivered(),
+    );
+    return true;
+  }
+
   public dispose(): void {
     this.panel?.dispose();
   }
