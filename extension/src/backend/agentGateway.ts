@@ -35,6 +35,11 @@ export const BACKEND_EMPTY_RESPONSE_TEXT = 'The KiroSight backend returned no an
 export interface AgentGatewayClient {
   readonly state: ConnectionState;
   requestAgent(request: AgentRequest): Promise<Result<AgentResponse, BackendClientError>>;
+  /**
+   * Sends the backend one `cancel` for the in-flight request, leaving it registered so an answer
+   * already on its way is still correlated (and any action it proposes is declined).
+   */
+  cancelAgentRequest?(targetId: string): boolean;
 }
 
 /** The slice of ContextService this gateway uses. */
@@ -67,6 +72,8 @@ export class BackendAgentGateway implements AgentGateway {
   /** Settles when the previous request has been handed to the client (not when it is answered). */
   private sendTail: Promise<void> = Promise.resolve();
   private fallbackIds = 0;
+  /** Pipeline request ids being relayed right now; the value says the submission was cancelled. */
+  private readonly relaying = new Map<number, { cancelled: boolean }>();
 
   /** Construction has no side effects. */
   public constructor(options: BackendAgentGatewayOptions) {
@@ -88,7 +95,32 @@ export class BackendAgentGateway implements AgentGateway {
     const prior = this.sendTail;
     let release: () => void = () => undefined;
     this.sendTail = new Promise<void>((resolve) => { release = resolve; });
-    return this.relay(text, info, prior, release);
+    if (info === undefined) return this.relay(text, info, prior, release);
+
+    const requestId = info.requestId;
+    const state = { cancelled: false };
+    this.relaying.set(requestId, state);
+    return this.relay(text, info, prior, release, state).finally(() => {
+      if (this.relaying.get(requestId) === state) this.relaying.delete(requestId);
+    });
+  }
+
+  /**
+   * The pipeline interrupted or replaced the submission `requestId` (Task 9.5). Only that
+   * submission is affected. If its `agent_request` was not sent yet it is never sent; if it was,
+   * the client fails it locally and the backend is sent one `cancel` for its id. A submission this
+   * gateway is not relaying (finished, unknown) is ignored, so a newer request is never cancelled.
+   * Never throws.
+   */
+  public cancel(requestId: number): void {
+    const state = this.relaying.get(requestId);
+    if (state === undefined || state.cancelled) return;
+    state.cancelled = true;
+    try {
+      this.client.cancelAgentRequest?.(`req-${requestId}`);
+    } catch {
+      // The answer is dropped by the pipeline regardless.
+    }
   }
 
   private async relay(
@@ -96,6 +128,7 @@ export class BackendAgentGateway implements AgentGateway {
     info: AgentRelayInfo | undefined,
     prior: Promise<void>,
     release: () => void,
+    state?: { cancelled: boolean },
   ): Promise<AgentGatewayResult> {
     let answer: Promise<Result<AgentResponse, BackendClientError>>;
     try {
@@ -103,6 +136,8 @@ export class BackendAgentGateway implements AgentGateway {
       // An explanation arrives already built from the IDE state; anything else gathers its context.
       const context = info?.prepared === undefined ? await this.context.getContext() : undefined;
       await prior;
+      // Interrupted before it was sent: nothing goes to the backend, and the pipeline drops this.
+      if (state?.cancelled === true) return failed();
       if (!this.isAvailable()) return unavailable();
 
       const request: AgentRequest = info?.prepared !== undefined

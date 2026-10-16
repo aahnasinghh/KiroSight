@@ -67,6 +67,11 @@ export interface VoiceWiringDeps {
   /** Told whenever the voice part of the view changed (status, Transcript entries, listening). */
   readonly onChange: (view: VoiceSessionView) => void;
   readonly scheduler?: Scheduler;
+  /**
+   * Runs when a recording is about to start (push-to-talk or activation). `extension.ts` passes the
+   * pipeline's interruption here (Task 9.7), so speech stops and outdated work is superseded.
+   */
+  readonly onBeforeListening?: () => void;
 }
 
 export class VoiceWiring implements Disposable {
@@ -114,6 +119,7 @@ export class VoiceWiring implements Disposable {
       transcript: deps.transcript,
       getCapabilities: () => deps.client.capabilities,
       scheduler,
+      ...(deps.onBeforeListening === undefined ? {} : { onBeforeListening: deps.onBeforeListening }),
     });
 
     this.subscriptions.push(

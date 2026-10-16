@@ -42,7 +42,7 @@ describe('webview main.js source', () => {
     const posted = [...source.matchAll(/post\(\{ type: '([a-z_]+)'/g)].map((match) => match[1]);
 
     expect(new Set(posted)).toEqual(
-      new Set(['ready', 'submit_text', 'confirm', 'decline', 'ptt_toggle', 'interrupt', 'mic_state']),
+      new Set(['ready', 'submit_text', 'confirm', 'decline', 'ptt_toggle', 'interrupt', 'mic_state', 'playback']),
     );
     // The recording is posted as audio_clip chunks (multi-line posts the pattern above skips).
     expect(source.match(/type: 'audio_clip'/g)).toHaveLength(2);

@@ -57,6 +57,12 @@ export interface VoiceSessionDeps {
   /** The backend's latest `hello_ack` capabilities, or null while it is not connected. */
   readonly getCapabilities: () => Capabilities | null;
   readonly scheduler?: Scheduler;
+  /**
+   * Called just before a recording starts (push-to-talk or activation), so spoken output stops and
+   * outdated work is superseded instead of the microphone hearing it (Task 9.5). Failures here
+   * never prevent listening.
+   */
+  readonly onBeforeListening?: () => void;
 }
 
 /** The voice part of the view model. The caller merges it into the full view model. */
@@ -268,6 +274,11 @@ export class VoiceSession implements Disposable {
   }
 
   private async startListening(): Promise<void> {
+    try {
+      this.deps.onBeforeListening?.();
+    } catch {
+      // Interrupting other work must never keep the user from speaking.
+    }
     const outcome = await this.deps.controller.startListening();
     if (outcome.status === 'failed') this.recordFailure(outcome.reason);
   }

@@ -582,15 +582,15 @@ Scope guardrails taken from the approved spec:
     - Implement `voice/speechController.ts`: after a response is appended to the Transcript (text first), send a `speech_request` when speech is active; forward `speech_audio` to the webview as `play_audio`; require playback to begin within 10 s; on failure or timeout keep the full text and add a separate Transcript entry within 1 s saying spoken playback is unavailable. Speak the confirmation prompt, including action name, target and change, when speech is active, and again on REPEAT_CONFIRMATION. A Bedrock error is spoken as well as shown.
     - _Requirements: 6.3, 9.4, 9.5, 10.2, 13.4, 15.3_
 
-  - [ ] 9.4 Implement webview audio playback
+  - [x] 9.4 Implement webview audio playback
     - Add playback to `media/main.js` using `blob:` URLs with a `data:` fallback: report `playback` state (`started`, `ended`, `failed`), handle `stop_audio`, show a Speaking status label, and keep the Escape key stopping speech without capturing other keys.
     - _Requirements: 9.4, 9.5, 14.5, 15.3_
 
-  - [ ] 9.5 Implement interruption and cancellation
+  - [x] 9.5 Implement interruption and cancellation
     - Starting push-to-talk, pressing Escape, running `kirosight.stopSpeaking` or submitting a new utterance stops playback (`stop_audio`), bumps the `RequestTracker` lane, and sends `cancel` for any in-flight `speech_request`, `audio_clip` or `agent_request`. Late replies for superseded ids are dropped. A pending confirmation is not resolved by an interruption, and an interrupted spoken response stays complete in the Transcript.
     - _Requirements: 6.10, 9.4, 15.3_
 
-  - [ ]* 9.6 Write TTS ordering and interruption tests
+  - [x]* 9.6 Write TTS ordering and interruption tests
     - Assert the Transcript entry is appended before `play_audio` is sent; a TTS response not playing within 10 s gives the full text and a separate unavailable entry within 1 s; interruption cancels in-flight work and drops late replies; a pending confirmation survives an interruption; the spoken confirmation prompt names the action and target and is repeated on request.
     - _Requirements: 6.3, 6.9, 9.4, 9.5, 10.2, 15.3_
 

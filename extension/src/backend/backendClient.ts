@@ -179,6 +179,8 @@ export interface BackendClientOptions {
 interface InFlight {
   readonly timer: TimerHandle;
   readonly settle: (result: Result<AgentResponse, BackendClientError>) => void;
+  /** True once `cancelAgentRequest` told the backend to stop, so no second `cancel` is sent. */
+  cancelSent: boolean;
 }
 
 export class BackendClient {
@@ -309,12 +311,13 @@ export class BackendClient {
 
       // Register before sending so a synchronous reply can always be correlated.
       const timer = this.scheduler.setTimeout(() => {
+        const entry = this.inFlight.get(id);
         if (!this.inFlight.delete(id)) return;
         this.logger?.warn('Agent request timed out', { id });
-        this.sendCancel(id);
+        if (entry?.cancelSent !== true) this.sendCancel(id);
         settle(err(clientError('timeout', 'The backend did not answer in time.')));
       }, AGENT_REQUEST_TIMEOUT_MS);
-      this.inFlight.set(id, { timer, settle });
+      this.inFlight.set(id, { timer, settle, cancelSent: false });
 
       try {
         this.requireSocket().send(serialized);
@@ -473,6 +476,30 @@ export class BackendClient {
       return false;
     }
   }
+  /**
+   * The user interrupted the in-flight agent request `targetId` (Task 9.5): tells the backend to
+   * stop working on it, once. Unlike `cancel`, the request stays registered, so an answer that was
+   * already on its way is still correlated and reaches the caller, which declines any action it
+   * proposes. Returns false, having sent nothing, when the request is not in flight, was already
+   * cancelled this way, or the connection is not usable. The request still ends by its answer, a
+   * backend error, a disconnect or its timeout (which does not send a second `cancel`).
+   */
+  public cancelAgentRequest(targetId: string): boolean {
+    const entry = this.inFlight.get(targetId);
+    if (entry === undefined || entry.cancelSent || !this.isUsable()) return false;
+    const cancel: Cancel = { version: PROTOCOL_VERSION, type: 'cancel', targetId };
+    const serialized = this.serialize(cancel);
+    if (serialized === undefined) return false;
+    try {
+      this.requireSocket().send(serialized);
+    } catch {
+      this.logger?.warn('Agent cancel could not be sent');
+      return false;
+    }
+    entry.cancelSent = true;
+    return true;
+  }
+
   /**
    * Cancels an in-flight request: fails it locally once, clears its timer and tells the backend.
    * Idempotent. A request that is not in flight (already settled, timed out or cancelled) is

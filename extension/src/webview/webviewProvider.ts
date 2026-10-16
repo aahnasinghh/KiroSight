@@ -164,6 +164,27 @@ export class WebviewProvider implements vscode.Disposable {
     return true;
   }
 
+  /**
+   * Tells an open panel to stop its current clip (`stop_audio`, Task 9.5). Returns false, having
+   * sent nothing, when no panel is open or posting throws; a rejected or undelivered post is
+   * swallowed (a panel that did not receive it has nothing playing that this could stop).
+   */
+  public sendStopAudio(): boolean {
+    if (!this.panel) {
+      return false;
+    }
+    const message: HostToWebviewMessage = { type: 'stop_audio' };
+    if (!validateHostToWebviewMessage(message).ok) {
+      return false;
+    }
+    try {
+      Promise.resolve(this.panel.webview.postMessage(message)).catch(() => undefined);
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
   public dispose(): void {
     this.panel?.dispose();
   }

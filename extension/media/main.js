@@ -38,16 +38,32 @@
   var submissions = new Map();
   // Sequence numbers already shown in the transcript, in display order.
   var renderedSeqs = [];
-  var statusText = elements.status.textContent || '';
+  // The status the host last sent (or a local message such as a refusal). While a spoken clip is
+  // really playing, "Speaking" is shown in front of it as text, so the state never relies on sound
+  // or color. The host's own wording is kept and comes back when playback ends.
+  var SPEAKING_LABEL = 'Speaking';
+  var hostStatus = elements.status.textContent || '';
+  var speaking = false;
   var voiceReason = elements.pttNote.textContent || '';
 
   function post(message) {
     vscodeApi.postMessage(message);
   }
 
+  function renderStatus() {
+    var shown = hostStatus;
+    if (speaking) {
+      // "Idle" says nothing while speech is playing, so it gives way to the Speaking label.
+      // Only the whole word "Idle" goes: "Idleness" or "Idle-ish" keep their text.
+      var rest = hostStatus.replace(/^(?:Status: )?Idle(?![\w-])\.?\s*/, '');
+      shown = rest === '' ? SPEAKING_LABEL : SPEAKING_LABEL + '. ' + rest;
+    }
+    elements.status.textContent = shown;
+  }
+
   function setStatus(text) {
-    statusText = text;
-    elements.status.textContent = text;
+    hostStatus = text;
+    renderStatus();
   }
 
   function entryText(entry) {
@@ -308,7 +324,283 @@
     if (capture !== null) {
       releaseStream(capture.stream);
     }
+    disposePlayback();
   });
+
+  // --- speech playback ------------------------------------------------------------------------
+  // The page plays a clip only when the host sends play_audio, and only one clip at a time (the
+  // newest wins). It reports back, with the host's own id, what really happened:
+  //   started: the audio element fired "playing" (sound is actually being produced). Neither
+  //            calling play() nor its promise resolving counts: only the element's own event does.
+  //   ended:   a clip that had started finished or was stopped.
+  //   failed:  the clip was unusable, play() was refused, or the element reported an error.
+  // Each clip reports at most one terminal state (ended or failed), and a clip that is stopped
+  // before it ever started reports nothing: the host decides about a clip that never began.
+  // Audio stays in memory only: it is decoded to a Blob and played from a blob: URL (a data: URL
+  // is the fallback), never written anywhere, and it is released when the clip ends or is stopped.
+  var AUDIO_MIME_PATTERN = /^audio\/[A-Za-z0-9.+-]{1,60}$/;
+  var BASE64_PATTERN = /^[A-Za-z0-9+\/]+={0,2}$/;
+  var MAX_AUDIO_BASE64_CHARS = 6000000;
+  var REMEMBERED_CLIPS = 16;
+  var playback = null;
+  // Ids of clips that already finished, so a repeated play_audio is never played twice.
+  var finishedClips = [];
+
+  function reportPlayback(state, id) {
+    post({ type: 'playback', state: state, id: id });
+  }
+
+  function rememberFinished(id) {
+    finishedClips.push(id);
+    while (finishedClips.length > REMEMBERED_CLIPS) {
+      finishedClips.shift();
+    }
+  }
+
+  function isPlayableClip(message) {
+    return typeof message.mimeType === 'string' && AUDIO_MIME_PATTERN.test(message.mimeType) &&
+      typeof message.base64 === 'string' && message.base64 !== '' &&
+      message.base64.length <= MAX_AUDIO_BASE64_CHARS && message.base64.length % 4 === 0 &&
+      BASE64_PATTERN.test(message.base64);
+  }
+
+  function decodeBase64(base64) {
+    var binary = window.atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function revokeObjectUrl(clip) {
+    if (clip.objectUrl !== null) {
+      try {
+        window.URL.revokeObjectURL(clip.objectUrl);
+      } catch (ignored) {
+        // Nothing more can be done for a URL that cannot be revoked.
+      }
+      clip.objectUrl = null;
+    }
+  }
+
+  // Detaches every listener from the clip's audio element, silences and empties it, and revokes
+  // the object URL. Safe to repeat. Events that arrive afterwards find no listener.
+  function releaseClip(clip) {
+    var audio = clip.audio;
+    clip.audio = null;
+    if (audio !== null) {
+      clip.listeners.forEach(function (entry) {
+        audio.removeEventListener(entry.type, entry.handler);
+      });
+      clip.listeners = [];
+      try {
+        audio.pause();
+        audio.removeAttribute('src');
+        if (typeof audio.load === 'function') {
+          audio.load();
+        }
+      } catch (ignored) {
+        // The element is being discarded; a failure to empty it changes nothing.
+      }
+    }
+    revokeObjectUrl(clip);
+  }
+
+  function leaveSpeaking() {
+    if (speaking) {
+      speaking = false;
+      renderStatus();
+    }
+  }
+
+  // The clip is over for good: release it, forget it, clear the label, and report the one terminal
+  // state. A clip that is already done reports nothing.
+  function finishClip(clip, state) {
+    if (clip.done) {
+      return;
+    }
+    clip.done = true;
+    releaseClip(clip);
+    clip.base64 = '';
+    rememberFinished(clip.id);
+    if (playback === clip) {
+      playback = null;
+    }
+    leaveSpeaking();
+    reportPlayback(state, clip.id);
+  }
+
+  // The clip is stopped on request (stop_audio, Escape, a newer clip, leaving the page). Nothing is
+  // reported for a clip that never started; one that had started has ended.
+  function stopClip(clip, report) {
+    if (clip.done) {
+      return;
+    }
+    clip.done = true;
+    var wasStarted = clip.started;
+    releaseClip(clip);
+    clip.base64 = '';
+    rememberFinished(clip.id);
+    if (playback === clip) {
+      playback = null;
+    }
+    leaveSpeaking();
+    if (report && wasStarted) {
+      reportPlayback('ended', clip.id);
+    }
+  }
+
+  function stopPlayback() {
+    if (playback !== null) {
+      stopClip(playback, true);
+    }
+  }
+
+  function disposePlayback() {
+    if (playback !== null) {
+      stopClip(playback, false);
+    }
+  }
+
+  // The source for a clip: a blob: URL when the browser offers object URLs, otherwise (or when
+  // asked, after the blob: URL failed) a data: URL.
+  function sourceFor(clip, preferData) {
+    if (!preferData && window.URL && typeof window.URL.createObjectURL === 'function') {
+      try {
+        var blob = new window.Blob([decodeBase64(clip.base64)], { type: clip.mimeType });
+        clip.objectUrl = window.URL.createObjectURL(blob);
+        clip.kind = 'blob';
+        return clip.objectUrl;
+      } catch (ignored) {
+        revokeObjectUrl(clip);
+      }
+    }
+    clip.kind = 'data';
+    return 'data:' + clip.mimeType + ';base64,' + clip.base64;
+  }
+
+  // Every audio event goes through here: an event from a clip that is no longer the current one,
+  // or that is already done, is ignored, so a late event can never restart or re-report a clip.
+  function listen(clip, type, handler) {
+    var wrapped = function () {
+      if (playback === clip && !clip.done) {
+        handler();
+      }
+    };
+    clip.listeners.push({ type: type, handler: wrapped });
+    clip.audio.addEventListener(type, wrapped);
+  }
+
+  function onClipFault(clip) {
+    if (!clip.started && clip.kind === 'blob' && !clip.retried) {
+      // The blob: URL did not work: try once more with the data: URL before giving up.
+      clip.retried = true;
+      releaseClip(clip);
+      beginClip(clip, sourceFor(clip, true));
+      return;
+    }
+    finishClip(clip, 'failed');
+  }
+
+  function beginClip(clip, source) {
+    if (typeof window.Audio !== 'function') {
+      finishClip(clip, 'failed');
+      return;
+    }
+    var audio;
+    try {
+      audio = new window.Audio();
+    } catch (ignored) {
+      finishClip(clip, 'failed');
+      return;
+    }
+    clip.audio = audio;
+    clip.listeners = [];
+
+    listen(clip, 'playing', function () {
+      if (clip.started) {
+        return; // buffering can fire it again; it was reported once
+      }
+      clip.started = true;
+      speaking = true;
+      renderStatus();
+      reportPlayback('started', clip.id);
+    });
+    listen(clip, 'ended', function () {
+      finishClip(clip, clip.started ? 'ended' : 'failed');
+    });
+    listen(clip, 'error', function () {
+      if (clip.started) {
+        finishClip(clip, 'failed');
+      } else {
+        onClipFault(clip);
+      }
+    });
+
+    // A pause nobody asked for (media keys, the system) would leave "Speaking" showing for a clip
+    // that is no longer producing sound. The browser also fires "pause" just before "ended" when a
+    // clip finishes by itself, so that case (audio.ended) is left to the "ended" listener. Waiting
+    // or stalled buffering fires neither event and is deliberately not treated as an ending. A
+    // pause before the clip started is ignored: the host's start deadline covers it. "abort" and
+    // "emptied" only follow a source change or load(), which only this code makes, after the
+    // listeners are detached.
+    listen(clip, 'pause', function () {
+      if (clip.started && !(clip.audio && clip.audio.ended)) {
+        finishClip(clip, 'ended');
+      }
+    });
+
+    var attempt;
+    try {
+      audio.src = source;
+      attempt = audio.play();
+    } catch (ignored) {
+      onClipFault(clip);
+      return;
+    }
+    if (attempt && typeof attempt.then === 'function') {
+      // The promise resolving proves nothing (only "playing" does); only a refusal matters. The
+      // rejection is always handled here, so it can never go unhandled.
+      attempt.then(undefined, function () {
+        // Only the element this attempt belongs to may fail the clip: a refusal from an element
+        // that was already replaced (the data: retry) or stopped is stale.
+        if (playback === clip && !clip.done && clip.audio === audio) {
+          onClipFault(clip);
+        }
+      });
+    }
+  }
+
+  function startPlayback(message) {
+    if (typeof message.id !== 'string' || message.id === '') {
+      return; // without an id nothing can be correlated or reported
+    }
+    var id = message.id;
+    if ((playback !== null && playback.id === id) || finishedClips.indexOf(id) !== -1) {
+      return; // a repeat of a clip that is playing or already finished
+    }
+    if (!isPlayableClip(message) || typeof window.Audio !== 'function') {
+      rememberFinished(id);
+      reportPlayback('failed', id);
+      return;
+    }
+
+    stopPlayback(); // the newest clip wins
+    var clip = {
+      id: id, mimeType: message.mimeType, base64: message.base64, audio: null, objectUrl: null,
+      kind: '', started: false, done: false, retried: false, listeners: []
+    };
+    playback = clip;
+    var source;
+    try {
+      source = sourceFor(clip, false);
+    } catch (ignored) {
+      finishClip(clip, 'failed');
+      return;
+    }
+    beginClip(clip, source);
+  }
 
   function handleHostMessage(message) {
     if (message === null || typeof message !== 'object') {
@@ -321,6 +613,12 @@
         break;
       case 'stop_capture':
         stopCapture();
+        break;
+      case 'play_audio':
+        startPlayback(message);
+        break;
+      case 'stop_audio':
+        stopPlayback();
         break;
       case 'view_state':
         renderViewState(message);
@@ -390,6 +688,7 @@
   // screen readers keep their normal handling of the key.
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
+      stopPlayback(); // speech stops at once, locally; no other key is looked at
       post({ type: 'interrupt' });
     }
   });

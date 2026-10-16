@@ -90,6 +90,12 @@ export interface ExplanationPreparer {
 export interface AgentGateway {
   respond(text: string, info?: AgentRelayInfo): Promise<AgentGatewayResult>;
   /**
+   * The submission with this `requestId` was interrupted or replaced: stop working on it and tell
+   * the backend to cancel the matching `agent_request`. Only that submission is affected. Optional
+   * and best effort; it must be safe to call at any time and repeatedly.
+   */
+  cancel?(requestId: number): void;
+  /**
    * Whether a request can be relayed right now. When this returns false the pipeline does not call
    * `respond` at all. A gateway without this method is treated as available.
    */
@@ -131,6 +137,17 @@ export interface ConfirmationController extends PendingConfirmationInterceptor {
   decline(): Promise<string | null>;
 }
 
+/**
+ * What an interruption or a new utterance also has to stop outside the pipeline (Task 9.5).
+ * SpeechController satisfies `stopSpeaking`; the voice session satisfies `cancelVoiceInput`.
+ */
+export interface InterruptionPort {
+  /** Stops spoken output and cancels speech work in flight. Must leave the Transcript alone. */
+  stopSpeaking(): unknown;
+  /** Abandons a recording or pending transcription; used when a typed utterance is submitted. */
+  cancelVoiceInput?(): void;
+}
+
 export interface InputPipelineDeps {
   readonly transcript: TranscriptStore;
   readonly localIntents: LocalIntentRunner;
@@ -146,6 +163,15 @@ export interface InputPipelineDeps {
   readonly onViewModel?: (model: ViewModel) => void;
   /** Called immediately (never after a delay) when agent-routed text cannot be relayed. */
   readonly onBackendUnavailable?: (notice: BackendUnavailableNotice) => void;
+  /** Speech and voice input to stop on an interruption or a new utterance (Task 9.5). Optional. */
+  readonly interruption?: InterruptionPort;
+}
+
+/** One agent submission handed to the gateway. `cancelled` is set once, and never cleared. */
+interface AgentFlight {
+  cancelled: boolean;
+  /** Ends the wait of the submission, so it need not hear from the backend after an interruption. */
+  wake: () => void;
 }
 
 interface ArrivalTicket {
@@ -162,6 +188,12 @@ export class InputPipeline {
   private latest: string | null = null;
   /** Tail of the arrival line: each submission waits only for the ones that arrived before it. */
   private arrivalTail: Promise<void> = Promise.resolve();
+  /**
+   * Agent submissions handed to the gateway and not yet settled, by RequestTracker id. The record
+   * outlives the entry here (the gateway's `isCurrent` closes over it), so a cancelled submission
+   * stays cancelled for a late answer even after it left this map.
+   */
+  private readonly inFlightAgent = new Map<number, AgentFlight>();
 
   public constructor(private readonly deps: InputPipelineDeps) {
     this.agent = deps.agent ?? reasoningNotConnectedGateway;
@@ -175,6 +207,12 @@ export class InputPipeline {
     if (text.trim().length === 0) {
       return 'discarded';
     }
+
+    // A new utterance supersedes earlier work: speech stops, and agent requests still in flight are
+    // cancelled (their answers are dropped). A spoken utterance does not cancel the voice input that
+    // is delivering it. Nothing here touches the Transcript or a pending confirmation.
+    this.stopOutputs(source === 'typed');
+    this.cancelInFlightAgent();
 
     this.deps.transcript.append('user', text, source);
     this.publish('processing');
@@ -247,21 +285,46 @@ export class InputPipeline {
       return 'not_handled';
     }
 
+    // Earlier submissions still in flight are replaced by this one: cancel them before it begins.
+    this.cancelInFlightAgent();
     const requestId = this.tracker.begin();
+    // An interruption ends this submission at once, without waiting for the backend: the answer
+    // may never come once the backend has been told to cancel. The gateway keeps handling a late
+    // answer on its own (it declines any action it proposes); that is never shown or acted on here.
+    let wake: () => void = () => undefined;
+    const interrupted = new Promise<'interrupted'>((resolve) => { wake = () => resolve('interrupted'); });
+    const flight: AgentFlight = { cancelled: false, wake };
+    this.inFlightAgent.set(requestId, flight);
     // respond() is invoked synchronously here, so the gateway sees calls in arrival order. The
     // line is released as soon as the request has been handed over, not when it is answered.
-    const pending = this.agent.respond(text, {
-      requestId,
-      source,
-      isCurrent: () => this.tracker.isCurrent(requestId),
-      ...(prepared === undefined ? {} : { prepared }),
-    });
+    let pending: Promise<AgentGatewayResult>;
+    try {
+      pending = this.agent.respond(text, {
+        requestId,
+        source,
+        isCurrent: () => this.tracker.isCurrent(requestId) && !flight.cancelled,
+        ...(prepared === undefined ? {} : { prepared }),
+      });
+    } catch (error) {
+      this.settleAgent(requestId);
+      throw error;
+    }
     ticket?.release();
 
-    const result = await pending;
-    if (!this.tracker.isCurrent(requestId)) {
-      return 'handled';
+    pending.then(undefined, () => undefined); // a failure after we stopped waiting is not ours to report
+
+    let settled: AgentGatewayResult | 'interrupted';
+    let live: boolean;
+    try {
+      settled = await Promise.race([pending, interrupted]);
+      live = this.tracker.isCurrent(requestId) && !flight.cancelled;
+    } finally {
+      this.settleAgent(requestId);
     }
+    if (!live || settled === 'interrupted') {
+      return 'handled'; // interrupted or replaced: a late answer is dropped, not shown or acted on
+    }
+    const result = settled;
     if (result.unavailable === true) {
       this.reportUnavailable(result.text);
       return 'not_handled';
@@ -326,10 +389,52 @@ export class InputPipeline {
     return this.deps.confirmation?.isPending() === true ? 'confirmation_pending' : 'idle';
   }
 
-  /** Makes in-flight agent replies stale so they are dropped, and returns status to idle. */
+  /**
+   * Interruption (Escape, push-to-talk start, the stop command; Task 9.5). Bumps the tracker lane
+   * so in-flight agent replies are stale and dropped, cancels those agent requests at the backend,
+   * and stops spoken output. Requests made afterwards get new, current ids. The Transcript and any
+   * pending confirmation are untouched, and the status afterwards still says "confirmation pending"
+   * when one is. Safe with nothing in flight and when repeated.
+   */
   public interrupt(): void {
     this.tracker.supersede();
-    this.publish('idle');
+    this.cancelInFlightAgent();
+    this.stopOutputs(false);
+    this.publish(this.restingStatus());
+  }
+
+  private settleAgent(requestId: number): void {
+    this.inFlightAgent.delete(requestId);
+  }
+
+  /** Marks every submission in flight as cancelled and tells the gateway, once each. Never throws. */
+  private cancelInFlightAgent(): void {
+    for (const [requestId, flight] of [...this.inFlightAgent]) {
+      if (flight.cancelled) continue;
+      flight.cancelled = true;
+      flight.wake();
+      try {
+        this.agent.cancel?.(requestId);
+      } catch {
+        // The answer is dropped here regardless; a failed cancel only costs the backend some work.
+      }
+    }
+  }
+
+  private stopOutputs(cancelVoice: boolean): void {
+    const port = this.deps.interruption;
+    if (port === undefined) return;
+    try {
+      port.stopSpeaking();
+    } catch {
+      // Stopping speech must never stop the pipeline.
+    }
+    if (!cancelVoice) return;
+    try {
+      port.cancelVoiceInput?.();
+    } catch {
+      // Same: a voice failure never blocks typed input.
+    }
   }
 
   private respond(text: string): void {

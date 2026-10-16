@@ -34,8 +34,10 @@ import type { PendingConfirmationView } from '../webview/viewModel';
  * - It cannot approve or run anything. It takes text and sends text; spoken words are never read
  *   back as commands here, and a spoken confirmation prompt changes no confirmation state.
  *
- * Not here (later tasks): playing the audio (9.4); interruption, `stop_audio` and the stop command
- * (9.5); constructing this in `extension.ts` and routing responses to it (9.7).
+ * Interruption (Task 9.5) is `stopSpeaking()`: it abandons everything in flight without a notice.
+ *
+ * Not here (later tasks): constructing this in `extension.ts`, routing responses and playback
+ * acknowledgments to it, and registering the stop command (9.7).
  */
 
 /** Req 9.5 / 10.2: playback must begin within 10 s of the response being produced. */
@@ -46,6 +48,9 @@ export const MAX_SPEECH_REQUEST_CHARS = 2000;
 
 /** Requests tracked at once. A new one is refused (with a note) rather than abandoning a waiting one. */
 export const MAX_TRACKED_SPEECH = 16;
+
+/** Clips remembered as possibly still on the panel, for deciding whether a stop is needed. */
+const MAX_PANEL_CLIPS = 32;
 
 /** The separate Transcript entry added when spoken playback could not happen (design F3). */
 export const SPEECH_UNAVAILABLE_TEXT = 'Spoken playback is unavailable. The response is in the transcript.';
@@ -76,6 +81,12 @@ export interface SpeechPanelPort {
     audio: { readonly id: string; readonly mimeType: string; readonly base64: string },
     onUndelivered?: () => void,
   ): boolean;
+  /**
+   * Asks the panel to stop whatever clip it is playing or about to play (`stop_audio`). False when
+   * no panel could take it. Optional so a panel that cannot play audio needs nothing here; an
+   * interruption without it still cancels the work and forgets the requests.
+   */
+  sendStopAudio?(): boolean;
 }
 
 export interface SpeechControllerDeps {
@@ -108,6 +119,12 @@ export class SpeechController implements Disposable {
   private readonly tracked = new Map<string, Tracked>();
   private readonly subscriptions: Disposable[] = [];
   private readonly recentTexts: string[] = [];
+  /**
+   * Ids of clips handed to the panel that have not been reported finished. An interruption sends
+   * `stop_audio` only while this is non-empty, even for a clip whose request was already forgotten
+   * (a missed deadline, say), because the panel may still be about to play it.
+   */
+  private readonly onPanel = new Set<string>();
   private counter = 0;
   private highestSeq = 0;
   private lastPromptKey: string | null = null;
@@ -177,6 +194,8 @@ export class SpeechController implements Disposable {
    */
   public handlePlayback(state: PlaybackState, id: string): void {
     if (this.disposed) return;
+    // The panel has finished with the clip (it released it), so there is nothing left to stop there.
+    if (state !== 'started') this.onPanel.delete(id);
     const tracked = this.tracked.get(id);
     if (tracked === undefined) return;
     switch (state) {
@@ -196,10 +215,50 @@ export class SpeechController implements Disposable {
     }
   }
 
+  /**
+   * Interruption (Task 9.5; Req 6.10, 9.4, 15.3): the user pressed Escape, started push-to-talk,
+   * ran the stop command or submitted a new utterance. Everything spoken or being prepared for
+   * speech is abandoned, deterministically and in one step:
+   *
+   * - a request still waiting for audio is forgotten and cancelled at the backend (`cancel` for its
+   *   own `speech-N` id only), so its audio, if it still arrives, matches nothing and is dropped;
+   * - every clip handed to the panel, started or not, is forgotten with its deadline, so a late
+   *   `started`, `ended` or `failed` acknowledgment for it is ignored;
+   * - if anything was handed to the panel and not yet reported finished, ONE validated `stop_audio`
+   *   is sent (the panel releases the clip). Nothing is sent when nothing is there to stop, and a
+   *   repeated interruption sends nothing more.
+   *
+   * It adds no Transcript entry: an interruption is the user's choice, not a speech failure, and
+   * the response text already in the Transcript is untouched. It cannot touch a confirmation.
+   * Requests made after this call get new ids and are not affected. Safe at any time, repeatedly,
+   * with the backend or the panel gone; it never throws. Returns whether anything was active.
+   */
+  public stopSpeaking(): boolean {
+    if (this.disposed) return false;
+    let active = this.onPanel.size > 0;
+    for (const [id, tracked] of [...this.tracked]) {
+      active = true;
+      this.clearTimer(tracked);
+      if (tracked.phase === 'awaiting_audio') this.cancelBackend(id);
+    }
+    this.tracked.clear();
+    const stopPanel = this.onPanel.size > 0;
+    this.onPanel.clear();
+    if (stopPanel) {
+      try {
+        this.deps.panel.sendStopAudio?.();
+      } catch {
+        // The panel is gone or refused; its clip, if any, ends with it.
+      }
+    }
+    return active;
+  }
+
   /** Stops every timer and subscription and forgets everything. Adds no notice, sends no audio. */
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.onPanel.clear();
     for (const subscription of this.subscriptions.splice(0)) subscription.dispose();
     for (const [id, tracked] of [...this.tracked]) {
       this.clearTimer(tracked);
@@ -330,18 +389,29 @@ export class SpeechController implements Disposable {
     }
 
     tracked.phase = 'awaiting_start'; // set first: hand-over is not allowed to run twice
+    this.onPanel.add(id);
+    // Bounded: until the panel's acknowledgments are routed here (Task 9.7) nothing removes an id
+    // but a stop, so the oldest are dropped. Any remaining id still means "send one stop_audio".
+    if (this.onPanel.size > MAX_PANEL_CLIPS) {
+      const oldest = this.onPanel.values().next().value;
+      if (oldest !== undefined) this.onPanel.delete(oldest);
+    }
     let handedOver = false;
     try {
       handedOver = this.deps.panel.sendPlayAudio({ id, mimeType, base64 }, () => this.onUndelivered(id));
     } catch {
       handedOver = false;
     }
-    if (!handedOver) this.fail(id, false);
+    if (!handedOver) {
+      this.onPanel.delete(id); // nothing reached the panel
+      this.fail(id, false);
+    }
   }
 
   /** The panel could not take a clip after all. A clip that already started, or ended, is not affected. */
   private onUndelivered(id: string): void {
     if (this.disposed) return;
+    this.onPanel.delete(id); // the panel never received it
     if (this.tracked.get(id)?.phase === 'awaiting_start') this.fail(id, false);
   }
 
