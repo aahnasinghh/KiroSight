@@ -15,7 +15,11 @@ export function normalize(utterance: string): string {
     // Keep filename/path punctuation; normalize sentence punctuation to separators.
     .replace(/[!?;,:[\]{}()"'`]/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    // Speech-to-text (smart formatting) ends a sentence with a period: "Run my tests." Only those
+    // trailing sentence-final periods go. A period inside the text is part of a file name
+    // ("auth.ts", ".env", "src/a.test.ts") and stays, so "Open auth.ts." means the file auth.ts.
+    .replace(/(?:\s*\.)+\s*$/, '');
 
   let changed = true;
   while (changed) {

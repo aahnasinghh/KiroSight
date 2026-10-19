@@ -20,7 +20,10 @@ describe('classifyReply', () => {
 
   it.each([
     'confirm this other thing', 'please confirm', 'confirmation', 'yes please', 'no way',
-    'do not cancel', 'repeat that', 'okay', 'ok', 'just do it', 'confirm.', 'yes!', 'unconfirm',
+    // 'confirm.' and 'yes!' used to be listed here. Sentence-boundary punctuation around an exact
+    // phrase is now accepted (see replyClassifierPunctuation.test.ts), because speech-to-text
+    // punctuates what it hears. Extra words are still rejected.
+    'do not cancel', 'repeat that', 'okay', 'ok', 'just do it', 'unconfirm',
     'go', 'ahead', 'never', 'mind', 'what is', 'say that',
   ])('does not match a partial or extended utterance: %j', (text) => {
     expect(classifyReply(text)).toBe('unrecognized');

@@ -598,7 +598,7 @@ Scope guardrails taken from the approved spec:
     - In `extension.ts`, construct `SpeechController`, connect it to the pipeline's response path and the confirmation prompts, and register `kirosight.stopSpeaking` in the manifest. Respect `kirosight.voice.enabled` so typed-only use stays silent.
     - _Requirements: 9.4, 9.5, 6.3_
 
-  - [ ] 9.8 Checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 9.8 Checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: responses are spoken after their text appears, Escape or a new utterance interrupts, and with TTS unavailable the text and a note remain.
 
 - [ ] 10. Milestone 10: Demo fixture, accessibility polish and failure handling

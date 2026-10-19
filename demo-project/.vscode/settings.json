@@ -1,0 +1,4 @@
+{
+  "kirosight.testCommand": "npm test",
+  "kirosight.testTimeoutSeconds": 120
+}
