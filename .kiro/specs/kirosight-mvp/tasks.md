@@ -594,7 +594,7 @@ Scope guardrails taken from the approved spec:
     - Assert the Transcript entry is appended before `play_audio` is sent; a TTS response not playing within 10 s gives the full text and a separate unavailable entry within 1 s; interruption cancels in-flight work and drops late replies; a pending confirmation survives an interruption; the spoken confirmation prompt names the action and target and is repeated on request.
     - _Requirements: 6.3, 6.9, 9.4, 9.5, 10.2, 15.3_
 
-  - [ ] 9.7 Wire speech output into the extension
+  - [x] 9.7 Wire speech output into the extension
     - In `extension.ts`, construct `SpeechController`, connect it to the pipeline's response path and the confirmation prompts, and register `kirosight.stopSpeaking` in the manifest. Respect `kirosight.voice.enabled` so typed-only use stays silent.
     - _Requirements: 9.4, 9.5, 6.3_
 

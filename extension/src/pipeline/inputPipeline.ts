@@ -3,7 +3,7 @@ import type { LocalIntent, RouteResult } from '../intent/intentTypes';
 import { route as defaultRoute } from '../intent/localIntentRouter';
 import type { HostToWebviewMessage } from '../protocol/bridgeMessages';
 import type { AgentRequest } from '../protocol/messages';
-import type { TranscriptSource, TranscriptStore } from '../transcript/transcriptStore';
+import type { TranscriptEntry, TranscriptSource, TranscriptStore } from '../transcript/transcriptStore';
 import {
   createViewModel,
   type PendingConfirmationView,
@@ -165,6 +165,16 @@ export interface InputPipelineDeps {
   readonly onBackendUnavailable?: (notice: BackendUnavailableNotice) => void;
   /** Speech and voice input to stop on an interruption or a new utterance (Task 9.5). Optional. */
   readonly interruption?: InterruptionPort;
+  /**
+   * Told about each KiroSight response after it is in the Transcript AND the view update that shows
+   * it has been delivered (Task 9.7). This is where spoken output starts, so text always comes
+   * first. `origin` is the source ('typed' or 'voice') of the submission this response answers,
+   * carried from that very `handle()` call through every await, so overlapping requests can never
+   * be mixed up. It is undefined for responses no submission is waiting for (pushed actions, later
+   * test summaries) and for the Confirm and Decline controls. Optional; an error thrown here never
+   * affects the pipeline.
+   */
+  readonly onResponse?: (entry: TranscriptEntry, origin: TranscriptSource | undefined) => void;
 }
 
 /** One agent submission handed to the gateway. `cancelled` is set once, and never cleared. */
@@ -194,6 +204,8 @@ export class InputPipeline {
    * stays cancelled for a late answer even after it left this map.
    */
   private readonly inFlightAgent = new Map<number, AgentFlight>();
+  /** Responses appended but not yet announced to `onResponse` (drained by the next publish). */
+  private readonly unannounced: Array<{ entry: TranscriptEntry; origin: TranscriptSource | undefined }> = [];
 
   public constructor(private readonly deps: InputPipelineDeps) {
     this.agent = deps.agent ?? reasoningNotConnectedGateway;
@@ -227,7 +239,7 @@ export class InputPipeline {
       if (intercepted.intercepted) {
         ticket?.release();
         if (intercepted.response !== undefined) {
-          this.respond(intercepted.response);
+          this.respond(intercepted.response, source);
         }
         this.publish(this.restingStatus());
         return 'handled';
@@ -238,14 +250,14 @@ export class InputPipeline {
       if (routed.route === 'local') {
         ticket?.release();
         const response = await this.deps.localIntents.handleIntent(routed.intent);
-        this.respond(response);
+        this.respond(response, source);
         this.publish(this.restingStatus());
         return 'handled';
       }
 
       return await this.relayToAgent(text, source, ticket);
     } catch {
-      this.respond(PIPELINE_FAILURE_TEXT);
+      this.respond(PIPELINE_FAILURE_TEXT, source);
       this.publish('error');
       return 'not_handled';
     } finally {
@@ -272,7 +284,7 @@ export class InputPipeline {
       const built = await this.deps.explainer.build({ target, id: PREPARED_REQUEST_ID, utterance: text, source });
       if (built.status === 'not_available') {
         ticket?.release();
-        this.respond(built.message);
+        this.respond(built.message, source);
         this.publish(this.restingStatus());
         return 'handled';
       }
@@ -281,7 +293,7 @@ export class InputPipeline {
 
     if (this.agent.isAvailable?.() === false) {
       ticket?.release();
-      this.reportUnavailable(BACKEND_UNAVAILABLE_TEXT);
+      this.reportUnavailable(BACKEND_UNAVAILABLE_TEXT, source);
       return 'not_handled';
     }
 
@@ -326,10 +338,10 @@ export class InputPipeline {
     }
     const result = settled;
     if (result.unavailable === true) {
-      this.reportUnavailable(result.text);
+      this.reportUnavailable(result.text, source);
       return 'not_handled';
     }
-    this.respond(result.text);
+    this.respond(result.text, source);
     // A proposed action may have left a confirmation pending, and the status must say so.
     this.publish(result.status === 'handled' ? this.restingStatus() : 'error');
     return result.status;
@@ -346,9 +358,9 @@ export class InputPipeline {
     this.publish(this.restingStatus());
   }
 
-  private reportUnavailable(message: string): void {
+  private reportUnavailable(message: string, origin: TranscriptSource): void {
     this.deps.onBackendUnavailable?.({ kind: 'text', message });
-    this.respond(message);
+    this.respond(message, origin);
     this.publish('error');
   }
 
@@ -437,9 +449,16 @@ export class InputPipeline {
     }
   }
 
-  private respond(text: string): void {
-    this.deps.transcript.append('kirosight', text);
+  /**
+   * `origin` is the source of the submission being answered. It travels with the entry (never in a
+   * shared "last input" variable) and is handed to `onResponse` by the publish that follows.
+   */
+  private respond(text: string, origin?: TranscriptSource): void {
+    const entry = this.deps.transcript.append('kirosight', text);
     this.latest = text;
+    // Every call site publishes right after responding, with no await in between, so the pairs
+    // queued here are drained in order by that publish and can never mix across requests.
+    if (this.deps.onResponse !== undefined) this.unannounced.push({ entry, origin });
   }
 
   private publish(statusKind: StatusKind): void {
@@ -449,5 +468,12 @@ export class InputPipeline {
       pendingConfirmation: this.deps.confirmation?.pendingConfirmation() ?? null,
       transcript: this.deps.transcript.getEntries(),
     }));
+    for (const { entry, origin } of this.unannounced.splice(0)) {
+      try {
+        this.deps.onResponse?.(entry, origin);
+      } catch {
+        // Spoken output must never break the pipeline.
+      }
+    }
   }
 }

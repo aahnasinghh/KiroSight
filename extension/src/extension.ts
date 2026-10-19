@@ -29,6 +29,7 @@ import { read as readTestCommand } from './testing/testCommandConfig';
 import { TestRunStore } from './testing/testRunStore';
 import { TestRunner } from './testing/testRunner';
 import { TranscriptStore } from './transcript/transcriptStore';
+import { SpeechController } from './voice/speechController';
 import { readVoiceEnabled } from './voice/voiceConfig';
 import { resolveStatusKind, type VoiceSessionView } from './voice/voiceSession';
 import { VOICE_DISABLED_TEXT, VOICE_DISABLED_VIEW, VoiceWiring } from './voice/voiceWiring';
@@ -152,6 +153,9 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
   // panel says so, and typed text and every local feature work exactly the same.
   const voiceEnabled = readVoiceEnabled();
   let voice: VoiceWiring | undefined;
+  // Spoken output follows the same setting: with voice off it is never constructed, so a typed-only
+  // session stays silent and sends no speech request at all.
+  let speech: SpeechController | undefined;
   /** The voice part of what the panel shows. The pipeline's own view model knows nothing about voice. */
   const voiceView = (): VoiceSessionView => voice?.session.view ?? VOICE_DISABLED_VIEW;
 
@@ -181,6 +185,27 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     confirmation: confirmationController,
     agent: agentGateway,
     explainer: explanationBuilder,
+    // Escape, push-to-talk, the stop command and a new utterance all stop spoken output here.
+    interruption: {
+      stopSpeaking: () => speech?.stopSpeaking(),
+      cancelVoiceInput: () => {
+        // A typed utterance replaces a recording in progress; an idle voice stack is left alone.
+        const phase = voice?.controller.status.phase;
+        if (phase === 'listening' || phase === 'processing') voice?.session.cancel();
+      },
+    },
+    // Only an answer to a spoken query is spoken, and only after it is in the Transcript and its
+    // view update is delivered. The origin travels with each response from the very submission it
+    // answers, so overlapping requests cannot be mixed up. Typed queries, the Confirm and Decline
+    // controls and pushed announcements stay text-only. Exactly ONE speech request is made per
+    // spoken query: a confirmation prompt, a re-prompt, a repeat and a result all reach the user as
+    // the text of the response itself (the confirmation controller and the agent action handler put
+    // the stored prompt into that text), so no second request is made for the pending prompt. A
+    // second request would be played as a second clip and cut the first one off.
+    onResponse: (entry, origin) => {
+      if (origin !== 'voice') return;
+      speech?.speakResponse(entry);
+    },
     // State changes reach an open panel immediately; a closed panel just keeps the state.
     onViewModel: (model) => {
       currentViewModel = model;
@@ -228,6 +253,23 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
       // A new Transcript entry, status or listening state reaches an open panel at once.
       onChange: () => webviewProvider?.updateViewModel(currentSnapshot()),
       scheduler: overrides.voiceScheduler,
+      // Starting to listen is an interruption: speech stops and older work is superseded first.
+      onBeforeListening: () => inputPipeline.interrupt(),
+    });
+
+    speech = new SpeechController({
+      client: backendClient,
+      // The panel is reached through the provider once it exists; until then nothing can be played.
+      panel: {
+        sendPlayAudio: (audio, onUndelivered) => webviewProvider?.sendPlayAudio(audio, onUndelivered) ?? false,
+        sendStopAudio: () => webviewProvider?.sendStopAudio() ?? false,
+      },
+      transcript,
+      isSpeechActive: () => voiceEnabled,
+      getPendingConfirmation: () => confirmationController.pendingConfirmation(),
+      // The separate "spoken playback is unavailable" entry reaches an open panel at once.
+      onTranscriptChanged: () => webviewProvider?.updateViewModel(currentSnapshot()),
+      scheduler: overrides.voiceScheduler,
     });
   }
 
@@ -237,13 +279,18 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     transcript,
     getViewModel: () => currentSnapshot(),
     ...(voice === undefined ? {} : { voice: voice.hooks }),
+    // The panel's playback reports (started, ended, failed) settle the matching speech request.
+    ...(speech === undefined ? {} : { speech }),
     voiceNotice: voice === undefined ? VOICE_DISABLED_TEXT : null,
     // The connection follows the panel: it opens with the panel and closes with it. The token is
     // loaded first so the very first handshake already carries it.
     onPanelOpenChange: (open) => {
       panelOpen = open;
       if (open) voice?.panelOpened();
-      else voice?.panelClosed(); // before the connection closes, so closing is not reported as a lost backend
+      else {
+        voice?.panelClosed(); // before the connection closes, so closing is not reported as a lost backend
+        speech?.stopSpeaking(); // closing the panel ends speech quietly: no "unavailable" entry for it
+      }
       void tokenLoaded.then(() => connectionManager.setPanelOpen(panelOpen));
     },
   });
@@ -285,6 +332,9 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     },
     // Separate from startBackend: this only updates SecretStorage and the next handshake.
     setBackendToken: createSetBackendTokenHandler({ secrets: context.secrets, applyTokenChange }),
+    // The same interruption as Escape: speech stops, older work is superseded and cancelled, and
+    // the Transcript and any pending confirmation are left exactly as they were.
+    stopSpeaking: () => { inputPipeline.interrupt(); },
   });
 
   // One listener for actions the backend pushes, registered once for the life of the extension.
@@ -298,6 +348,8 @@ export function activate(context: vscode.ExtensionContext, overrides: Activation
     vscode.Disposable.from(
       // First, so the microphone is released before anything else shuts down.
       { dispose: () => voice?.dispose() },
+      // Stop whatever is playing before the controller is released; disposing alone sends nothing.
+      { dispose: () => { speech?.stopSpeaking(); speech?.dispose(); } },
       connectionManager,
       backendStateSubscription,
       actionRequestSubscription,

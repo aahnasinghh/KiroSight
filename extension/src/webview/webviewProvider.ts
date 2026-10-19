@@ -47,6 +47,13 @@ export interface WebviewProviderDeps {
     onInterrupt?(): void;
   };
   /**
+   * Receives the validated `playback` reports from the panel (SpeechController satisfies this).
+   * Optional: without it those messages are dropped.
+   */
+  readonly speech?: {
+    handlePlayback(state: 'started' | 'ended' | 'failed', id: string): void;
+  };
+  /**
    * The one-time system notice recorded when the panel first opens. Left out, it is the original
    * "voice is unavailable until voice support is implemented" text. `null` records no notice (voice
    * is running and reports its own state); a string records that text (for example, voice is off).
@@ -278,7 +285,9 @@ export class WebviewProvider implements vscode.Disposable {
           await this.deps.voice?.onPushToTalkToggle?.();
           return;
         case 'playback':
-          // Playback arrives in Milestone 9.
+          // The panel reports what really happened to a clip (Task 9.4). Handed to speech output,
+          // if connected; without it the report has no effect, as before speech existed.
+          this.deps.speech?.handlePlayback(message.state, message.id);
           return;
       }
     } catch {

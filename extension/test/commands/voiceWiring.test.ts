@@ -15,6 +15,7 @@ import { resolve as resolvePath } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { activate } from '../../src/extension';
+import { SPEECH_UNAVAILABLE_TEXT } from '../../src/voice/speechController';
 import { VOICE_INIT_BUDGET_MS, STT_RESPONSE_LIMIT_MS } from '../../src/voice/voiceController';
 import { VOICE_DISABLED_TEXT } from '../../src/voice/voiceWiring';
 import { FakeScheduler } from '../mocks/fakeScheduler';
@@ -238,6 +239,9 @@ describe('voice wiring: push-to-talk through the validated bridge', () => {
     expect((await transcript()).map(({ role, text, source }) => [role, text, source])).toEqual([
       ['user', 'where am I', 'voice'],
       ['kirosight', 'No file is open.', undefined],
+      // Task 9.7: this stub backend reports no text-to-speech, so speech output says so once, as a
+      // separate entry after the answer (design F3). The answer itself is untouched.
+      ['system', SPEECH_UNAVAILABLE_TEXT, undefined],
     ]);
     expect(viewStates().at(-1)).toMatchObject({ listening: false, statusKind: 'idle' });
   });
@@ -256,8 +260,24 @@ describe('voice wiring: push-to-talk through the validated bridge', () => {
     const requests = framesOf(harness, 'agent_request');
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ utterance: { text: 'run rm -rf / && open /etc/passwd', source: 'voice' } });
+    // Starting push-to-talk is an interruption (Task 9.5): it advances the request lane before the
+    // recording starts, so the first request of the session is req-2 and req-1 is never issued.
+    expect(requests[0]!.id).toBe('req-2');
+
+    // A reply for the id that was superseded is stale. It must be ignored: not shown, and no action
+    // it proposes may run (a safe FOCUS_EDITOR would visibly execute a command if it were accepted).
     socket.triggerJson({
-      version: 1, type: 'agent_response', replyTo: 'req-1', speech: 'I cannot do that.',
+      version: 1, type: 'agent_response', replyTo: 'req-1', speech: 'STALE ANSWER',
+      action: { type: 'FOCUS_EDITOR' }, confirmationRequired: false,
+    });
+    await flush();
+    expect(vscodeMockState.executedCommands).toEqual([]);
+    expect(JSON.stringify(viewStates())).not.toContain('STALE ANSWER');
+    expect(framesOf(harness, 'action_result')).toEqual([]);
+
+    // The current request's reply is still accepted.
+    socket.triggerJson({
+      version: 1, type: 'agent_response', replyTo: 'req-2', speech: 'I cannot do that.',
       action: { type: 'NO_ACTION' }, confirmationRequired: false,
     });
     await stopping;
@@ -266,6 +286,8 @@ describe('voice wiring: push-to-talk through the validated bridge', () => {
     expect(vscodeMockState.executedCommands).toEqual([]);
     const entries = await transcript();
     expect(entries[0]).toMatchObject({ role: 'user', source: 'voice' });
+    expect(entries.map((entry) => entry.text)).toContain('I cannot do that.');
+    expect(entries.map((entry) => entry.text)).not.toContain('STALE ANSWER');
     expect(framesOf(harness, 'action_result')).toHaveLength(1); // the one answer to the proposed NO_ACTION
   });
 

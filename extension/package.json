@@ -22,7 +22,8 @@
     "onCommand:kirosight.runTests",
     "onCommand:kirosight.showTestOutput",
     "onCommand:kirosight.startBackend",
-    "onCommand:kirosight.setBackendToken"
+    "onCommand:kirosight.setBackendToken",
+    "onCommand:kirosight.stopSpeaking"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -103,6 +104,10 @@
       {
         "command": "kirosight.setBackendToken",
         "title": "KiroSight: Set Backend Token"
+      },
+      {
+        "command": "kirosight.stopSpeaking",
+        "title": "KiroSight: Stop Speaking"
       }
     ],
     "keybindings": [
