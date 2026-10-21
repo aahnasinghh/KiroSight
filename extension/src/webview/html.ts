@@ -99,7 +99,7 @@ export function buildWebviewHtml(options: WebviewHtmlOptions): string {
     <p id="status" role="status">Status: Idle</p>
     <section aria-labelledby="transcript-heading">
       <h2 id="transcript-heading">Transcript</h2>
-      <div id="transcript" role="log" aria-live="polite" tabindex="0"></div>
+      <div id="transcript" role="log" aria-live="polite" aria-labelledby="transcript-heading" tabindex="0"></div>
     </section>
     <section aria-labelledby="latest-heading">
       <h2 id="latest-heading">Latest response</h2>

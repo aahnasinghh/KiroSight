@@ -1,5 +1,26 @@
 # KiroSight Technical Spike Results
 
+Five time-boxed spikes (A to E) de-risked the riskiest assumptions before the matching milestones. Each wrote throwaway code only. This page records each outcome and the decision taken. The detailed evidence follows below.
+
+## Summary of outcomes and decisions
+
+| Spike | Question | Result | Decision | What was built from it |
+|---|---|---|---|---|
+| **A** (Task 1.1) | Does `kirosight.activate` work with no keybinding, and does `Ctrl+Alt+K` conflict? | PASS on the tested machine | `kirosight.activate` is the canonical entry point. `Ctrl+Alt+K` is the default on Windows and Linux only; no macOS default; it is rebindable. | The `KiroSight: Activate` command and the manifest keybinding (`isWindows || isLinux`). |
+| **B** (Task 2.1) | Does the document symbol provider name the enclosing function in Kiro? | FALLBACK: returned no symbols | When no symbol is available, report the file and line plus a bounded cursor-window excerpt with no symbol name (`symbolStatus: provider_unavailable`). | The symbol service's `provider_unavailable` path and the protocol's `symbolStatus` field. Recheck in the real demo workspace. |
+| **C** (Task 5.1) | Can a trusted test command be run on Windows with output, exit code and process-tree kill? | PASS for capture and tree kill; FALLBACK (heuristic only) for detecting a command that never ran | Run with `spawn(..., { shell: true })`, use the `close` event, kill with `taskkill /PID <pid> /T /F`, and classify `did_not_execute` only from a spawn error or the `cmd.exe` "not recognized" message. | The `TestRunner` (Task 5.12). See also the later note on the demo fixture below. |
+| **D** (Task 8.1) | Can the Kiro webview capture the microphone? | FALLBACK: `NotAllowedError` in the Kiro webview even with Windows microphone access enabled | Use `BackendLocalVoiceInput`: the backend records from the default microphone. The webview path stays as a fallback only. | Backend microphone capture (`sounddevice`) and the `record_start` and `record_stop` messages. Real-device behavior still needs a manual check. |
+| **E** (Task 7.1) | Does Bedrock Converse with a forced tool return a valid response? | OFFLINE PASS (24 checks); LIVE BLOCKED: no inference quota, throttled | Use the offline `StubLLMClient` by default. Amazon Bedrock remains the only production provider, with no second provider. | The Bedrock client behind the `LLMClient` interface, strict response validation, and the stub. **No live Bedrock response has been observed.** Task 7.14 stays open until one is. |
+
+### Later notes
+
+- **Spike C and the demo fixture.** After the `TestRunner` was built, running `npm test` directly inside the Extension Development Host failed to start Vitest on the development machine (the cause was not found), while the same command through `powershell.exe -NoProfile -Command "npm.cmd test"` works. The demo project uses that wrapper in its settings. This is a demo workaround, not a fix. See `demo-project/README.md`.
+- **Spike D.** The decision above selects an approach. It does not claim that backend microphone capture works on every machine.
+- **Spike E.** Everything about live Bedrock inference remains unverified.
+- **Spike code (removed in Task 10.9).** The throwaway harnesses for Spikes A to E were deleted: `spikes/activation-command/`, the source files of `spikes/document-symbol/`, `spikes/trusted-test-command-windows/`, the source files of `spikes/webview-mic/`, and `backend/spikes/bedrock_converse.py`. Nothing in the extension, backend, demo project, scripts or tests used them. The evidence below describes the spikes as they were run and is kept as the record. The code remains in Git history if it was committed. The checks that mattered are covered by production tests: the Bedrock request, forced tool, response extraction and allow-list checks (Spike E) by `backend/tests/test_bedrock_service.py` and `backend/tests/test_response_parser.py`; the Windows command capture, missing-command heuristic and process-tree kill (Spike C) by `extension/test/testing/testRunner.test.ts` and `testRunnerRealProcess.test.ts`; the activation command and keybinding (Spike A) by `extension/test/manifest.test.ts`. Spike B and Spike D checked properties of the Kiro environment, not product code.
+
+The full evidence for each spike follows.
+
 ## Spike A — Activation Command / Keybinding
 
 - **Date:** 2026-10-05
@@ -28,7 +49,7 @@ Use `Ctrl+Alt+K` as the proposed Windows/Linux default for the hackathon demo. K
 
 ### Throwaway spike files
 
-The disposable extension and validation harness are under `spikes/activation-command/`. They are not the production extension scaffold and may be removed or replaced when Task 1.2 begins.
+The disposable extension and validation harness were under `spikes/activation-command/`. They were not the production extension scaffold. Removed in Task 10.9.
 
 ## Spike B — Document Symbol Lookup
 
@@ -44,7 +65,7 @@ The disposable extension and validation harness are under `spikes/activation-com
 
 ### Spike B disposable files
 
-The fixture and harness are under `spikes/document-symbol/`. No production `extension/src/context/` or SymbolService code was added.
+The fixture and harness were under `spikes/document-symbol/`. No production `extension/src/context/` or SymbolService code was added. The source files were removed in Task 10.9.
 
 ## Spike C — Trusted Test Command on Windows
 
@@ -107,7 +128,7 @@ Findings:
 
 ### Spike C disposable files
 
-The harness and fixtures are under `spikes/trusted-test-command-windows/` (`run.js`, `fixtures/normal.js`, `fixtures/decoy.js`, `fixtures/tree-parent.js`, `fixtures/tree-child.js`). Run with `node run.js` from that folder. No generated output or PID files are kept.
+The harness and fixtures were under `spikes/trusted-test-command-windows/` (`run.js`, `fixtures/normal.js`, `fixtures/decoy.js`, `fixtures/tree-parent.js`, `fixtures/tree-child.js`) and were run with `node run.js`. They were removed in Task 10.9. The behavior they established is covered by the `TestRunner` tests, including the real-process cancel and timeout tests that check the whole process tree ends.
 
 ## Spike D — Microphone Capture in a Kiro Webview
 
@@ -120,7 +141,7 @@ Environment:
 - The machine reports a microphone array available.
 - Kiro Extension Development Host was used for the manual test.
 
-What was built (throwaway, `spikes/webview-mic/`):
+What was built (throwaway, `spikes/webview-mic/`, removed in Task 10.9):
 - A Kiro extension with **KiroSight: Microphone Capture (Spike D)**. It opens a webview with one button. Pressing it calls `getUserMedia({ audio: true })`, records 4 seconds with `MediaRecorder`, and sends only `postMessage` messages to the host: `mic_state`, `capture_start`, `first_sample`, and `audio_clip` as base64.
 - The host judges the attempt against the pass criterion, writes a successful clip to `%TEMP%\\kirosight-spike-d\\` for playback, and reports the verdict in the `KiroSight Spike D` output channel.
 - The webview uses a locked-down `default-src 'none'` CSP, opens no network connection, holds no credentials, and has a keyboard-operable button with a live status region.
@@ -156,7 +177,7 @@ Decision:
 - The result is recorded here for Task 8.2's documented implementation choice.
 - No AWS or Deepgram request was made, and no audio was sent to an external service.
 
-### Spike E — Amazon Bedrock Converse
+## Spike E — Amazon Bedrock Converse
 
 Date: 2026-10-12
 Task: 7.1
@@ -168,7 +189,7 @@ Configuration:
 - Bedrock Model ID: `amazon.nova-lite-v1:0`
 - boto3: `1.43.111`
 - Authentication source: `AWS_BEARER_TOKEN_BEDROCK` (value not recorded)
-- Spike file: `backend/spikes/bedrock_converse.py`
+- Spike file: `backend/spikes/bedrock_converse.py` (removed in Task 10.9; its offline checks are covered by the production backend tests)
 
 Offline validation:
 - The Converse request uses exactly one forced `respond` tool through `toolChoice`.

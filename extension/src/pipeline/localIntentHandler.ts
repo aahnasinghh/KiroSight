@@ -47,7 +47,9 @@ export const HELP_TEXT = [
   'You can ask: where am I, current function, read selection,',
   'what errors are there, errors in this file, next error, previous error,',
   'go to the first, second or third error, go to line N, open a file name,',
-  'focus editor, run tests, or help.',
+  'focus editor, run tests, summarize the test failures, list all failures,',
+  'explain this error (this one needs the backend), or help.',
+  'When a confirmation is pending, say confirm, decline, cancel, or repeat.',
 ].join(' ');
 
 export class LocalIntentHandler {

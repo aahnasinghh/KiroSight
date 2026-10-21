@@ -67,10 +67,28 @@ describe('webview main.js source', () => {
     expect(start).toBeGreaterThan(-1);
     expect(block).toContain('elements.input.focus()');
     expect(block).not.toMatch(/value|post\(|setStatus|textContent|select\(|setSelectionRange/);
-    // Initial load, the explicit focus_input path, the pending prompt, and the input after the
-    // last confirmation resolves; nothing else moves focus.
-    expect(source.match(/\.focus\(\)/g)).toHaveLength(4);
     expect(source).not.toMatch(/addEventListener\('(focus|focusin|visibilitychange)'/);
+  });
+
+  it('moves focus only to the command input or the confirmation prompt, and only from known places', () => {
+    // Every focus call must name one of the two allowed targets. Which events cause a move is
+    // proved by behavior in accessibilityPolish.test.ts and webviewStructure.test.ts (load,
+    // focus_input, a new prompt, resolution, Send, Confirm, Decline).
+    const calls = source.match(/[\w.]+\.focus\(\)/g) ?? [];
+
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(['elements.input.focus()', 'elements.confirmPrompt.focus()'], call).toContain(call);
+    }
+    // Focus is never moved by a timer, a retry loop or a blur, and the page never forces
+    // focus back with a global handler.
+    expect(source).not.toMatch(/\.blur\(|setTimeout|setInterval|requestAnimationFrame|focus\(\{/);
+    expect(source).not.toMatch(/document\.activeElement/);
+    // The prompt takes focus only inside renderConfirmation, when a presentation changes.
+    const prompt = calls.filter((call) => call === 'elements.confirmPrompt.focus()');
+    expect(prompt).toHaveLength(1);
+    const render = source.slice(source.indexOf('function renderConfirmation'), source.indexOf('function renderViewState'));
+    expect(render).toContain('elements.confirmPrompt.focus()');
   });
 
   it('never builds markup from data or runs dynamic code', () => {

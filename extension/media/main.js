@@ -50,6 +50,16 @@
     vscodeApi.postMessage(message);
   }
 
+  // Assigning identical text still replaces the text node, and some screen readers announce a
+  // replaced node in a live region again. So text is written only when it really changes: a
+  // repeated view_state never re-announces the status, re-reads a focused prompt, or re-labels a
+  // button that is being read.
+  function setText(element, text) {
+    if (element.textContent !== text) {
+      element.textContent = text;
+    }
+  }
+
   function renderStatus() {
     var shown = hostStatus;
     if (speaking) {
@@ -58,7 +68,7 @@
       var rest = hostStatus.replace(/^(?:Status: )?Idle(?![\w-])\.?\s*/, '');
       shown = rest === '' ? SPEAKING_LABEL : SPEAKING_LABEL + '. ' + rest;
     }
-    elements.status.textContent = shown;
+    setText(elements.status, shown);
   }
 
   function setStatus(text) {
@@ -110,7 +120,7 @@
     // aria-disabled keeps the control in the Tab order; the native attribute would not.
     elements.ptt.setAttribute('aria-disabled', available ? 'false' : 'true');
     voiceReason = voice && typeof voice.reasonText === 'string' ? voice.reasonText : '';
-    elements.pttNote.textContent = voiceReason;
+    setText(elements.pttNote, voiceReason);
   }
 
   // The prompt currently shown, or null. Focus moves only when this value changes:
@@ -129,7 +139,7 @@
 
     elements.confirm.hidden = prompt === null;
     if (prompt !== null) {
-      elements.confirmPrompt.textContent = prompt;
+      setText(elements.confirmPrompt, prompt);
       if (prompt !== shownPrompt || key !== shownKey) {
         elements.confirmPrompt.focus();
       }
@@ -149,7 +159,7 @@
       renderTranscript(message.transcript);
     }
 
-    elements.latest.textContent = typeof message.latest === 'string' ? message.latest : '';
+    setText(elements.latest, typeof message.latest === 'string' ? message.latest : '');
 
     renderConfirmation(message.pendingConfirmation);
 
@@ -157,7 +167,7 @@
 
     var listening = message.listening === true;
     elements.ptt.setAttribute('aria-pressed', listening ? 'true' : 'false');
-    elements.ptt.textContent = listening ? 'Stop listening' : 'Push to talk';
+    setText(elements.ptt, listening ? 'Stop listening' : 'Push to talk');
   }
 
   function handleSubmitAck(message) {
@@ -664,14 +674,23 @@
     var submitId = 'submit-' + submitCounter;
     submissions.set(submitId, text);
     post({ type: 'submit_text', submitId: submitId, text: text });
+    // Focus stays in (or returns to) the command input after Send, so pressing the Send button
+    // does not leave the user on a button after the draft is cleared. A confirmation that the
+    // reply raises still takes focus afterwards, through renderConfirmation.
+    elements.input.focus();
   });
 
+  // Confirm and Decline hide themselves once the request resolves, which would drop focus onto the
+  // page body. Focus goes to the command input as the answer is sent, so it is never lost. If a
+  // different prompt follows, it takes focus when it appears.
   elements.confirmYes.addEventListener('click', function () {
     post({ type: 'confirm' });
+    elements.input.focus();
   });
 
   elements.confirmNo.addEventListener('click', function () {
     post({ type: 'decline' });
+    elements.input.focus();
   });
 
   elements.ptt.addEventListener('click', function () {

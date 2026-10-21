@@ -609,15 +609,15 @@ Scope guardrails taken from the approved spec:
     - Create a small TypeScript project in `demo-project/` with exactly pinned dependencies and a known test runner (Vitest), one deliberate type error in a function, a second file for `OPEN_FILE`, and a test suite with a few passing tests and at least one failing test. Add `kirosight.testCommand` to the fixture's workspace settings and document that the workspace must be trusted for it to apply.
     - _Requirements: 2.1, 4.1, 4.4, 7.2, 7.3, 12.1_
 
-  - [ ]* 10.2 Write failure-mode tests (F1 to F12)
+  - [x]* 10.2 Write failure-mode tests (F1 to F12)
     - Table-driven tests with fakes covering: backend offline, Bedrock unavailable, Deepgram STT and TTS failing, microphone unavailable, microphone permission denied, invalid AI response, unknown action, test command missing, test command failing, no active editor, no diagnostics and symbol provider unavailable. Each asserts the stated message, that no action ran where none should, and that typed commands and local features still work.
     - _Requirements: 1.2, 1.4, 2.3, 2.4, 5.5, 7.6, 7.7, 10.1, 10.2, 10.3, 10.4, 10.5, 12.3, 13.4_
 
-  - [ ]* 10.3 Write repository hygiene tests
+  - [x]* 10.3 Write repository hygiene tests
     - Assert the environment variable names referenced in the Python and TypeScript sources match `.env.example` and `docs/env-vars.md`, that `.gitignore` excludes `.env` files, `node_modules`, Python virtual environments, `__pycache__` and build output, and that no credential patterns appear in the webview assets, the generated HTML or the extension source.
     - _Requirements: 17.3, 17.4, 17.6, 19.4_
 
-  - [ ] 10.4 Apply accessibility polish from the review
+  - [x] 10.4 Apply accessibility polish from the review
     - Refine the webview code: focus movement after submit, confirmation and resolution; one announcement per change (no duplicate transcript and latest-response announcements); text labels for every status; `forced-colors` and high-contrast friendly styles; a focus indicator that holds at least 3:1 contrast in the light, dark and high-contrast themes; no interception of screen reader keys.
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 15.4_
 
@@ -625,15 +625,15 @@ Scope guardrails taken from the approved spec:
     - Run `axe-core` (exact pinned version) against the rendered webview in jsdom and assert no violations. State in the test comments that automated checks catch only a subset of issues and cannot certify WCAG conformance.
     - _Requirements: 14.1, 14.3, 14.4_
 
-  - [ ] 10.6 Write the accessibility review checklist
+  - [x] 10.6 Write the accessibility review checklist
     - Create `docs/accessibility-checklist.md` covering: a keyboard-only walkthrough of every control and demo step; a screen reader pass (NVDA or JAWS on Windows, VoiceOver on macOS) checking that the transcript is read, status changes are announced once, and the confirmation prompt is announced with focus on it; operation with TTS disabled and with the backend stopped; and focus indicator contrast in the light, dark and high-contrast themes. State clearly that full WCAG validation needs assistive technology testing and expert review.
     - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 15.4_
 
-  - [ ] 10.7 Write the demo script and pre-flight check
+  - [x] 10.7 Write the demo script and pre-flight check
     - Create `docs/demo-script.md` for the primary journey (activate with `kirosight.activate`, ask what is happening, go to the error, explain it, run tests, get a summary) with text always available, and a pre-flight script checking the backend `/health`, that required environment variable names are set (never printing values), that `kirosight.testCommand` is configured and that the demo fixture builds.
     - _Requirements: 7.2, 9.7, 17.6_
 
-  - [ ] 10.8 Write the README and finalize the documentation
+  - [x] 10.8 Write the README and finalize the documentation
     - Write the root `README.md` (what KiroSight is, setup for the extension and backend, environment variables, settings, how to activate with and without a keybinding, the loopback-only backend, the limits and non-goals, and that it supplements the user's screen reader). Finalize `docs/env-vars.md`, `docs/protocol.md` and `docs/spike-results.md` (all five spike outcomes and the decisions taken).
     - _Requirements: 9.7, 9.8, 9.9, 9.10, 17.4_
 

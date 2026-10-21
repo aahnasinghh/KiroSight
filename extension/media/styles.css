@@ -122,10 +122,46 @@ input[type='text']:focus {
   border-width: 2px;
 }
 
+/* VS Code high-contrast themes. The theme supplies the contrast and focus colors; the borders
+   below keep every region's edge visible so no region is told apart by fill color alone. */
+.vscode-high-contrast #status,
+.vscode-high-contrast #transcript,
+.vscode-high-contrast-light #status,
+.vscode-high-contrast-light #transcript {
+  border-color: var(--vscode-contrastBorder, currentColor);
+}
+
+.vscode-high-contrast button,
+.vscode-high-contrast input[type='text'],
+.vscode-high-contrast-light button,
+.vscode-high-contrast-light input[type='text'] {
+  border-color: var(--vscode-contrastBorder, currentColor);
+}
+
+.vscode-high-contrast :focus,
+.vscode-high-contrast :focus-visible,
+.vscode-high-contrast-light :focus,
+.vscode-high-contrast-light :focus-visible {
+  outline-color: var(--vscode-focusBorder, currentColor);
+}
+
 @media (forced-colors: active) {
   :focus,
   :focus-visible {
     outline-color: Highlight;
+  }
+
+  #status,
+  #transcript {
+    border-color: CanvasText;
+  }
+
+  input[type='text'] {
+    border-color: FieldText;
+  }
+
+  #ptt-note {
+    border-left-color: CanvasText;
   }
 
   button {

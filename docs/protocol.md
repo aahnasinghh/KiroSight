@@ -9,9 +9,11 @@ This document is the contract between the KiroSight extension host (TypeScript) 
 
 The two implementations are maintained by hand and kept in step by the shared fixtures described in [Shared fixtures](#shared-fixtures).
 
-## Status: defined, not yet running
+## Status: implemented, live providers not verified
 
-This document defines message shapes. A message being defined does not mean the feature behind it exists yet. At the time of writing there is no running WebSocket server, no extension-side backend client, and no Amazon Bedrock, speech-to-text, text-to-speech or microphone integration. For example, `speech_audio` and `transcription_result` exist as data definitions only.
+Both sides implement this protocol: the backend serves it on a local WebSocket (`/ws`, with `GET /health` beside it), and the extension host has a client that validates every message. The backend has Amazon Bedrock, Deepgram speech-to-text, Deepgram text-to-speech and local microphone integrations behind interfaces, and the automated tests exercise them with fakes.
+
+What this document does **not** establish: live behavior. Amazon Bedrock inference has not been verified end to end (Task 7.14 is open because of account quota and throttling), and the Deepgram and microphone paths have not been verified in a live end-to-end demo. A message being defined and handled in tests does not prove that a provider will answer. `action_request` is defined but reserved: in the MVP the agent proposes actions inside `agent_response`.
 
 ## Purpose and boundaries
 
@@ -334,7 +336,7 @@ An action that is not an object, or whose `type` is missing or not a string, fai
 | `CANCELLED` | The request was cancelled with `cancel` |
 | `INTERNAL` | An unexpected backend error |
 
-The meaning of provider-specific codes describes intended use; those providers are not implemented yet.
+Provider-specific codes (`BEDROCK_*`, `STT_*`, `TTS_*`, `MIC_*`) are produced by the backend's provider integrations. Those paths are covered by tests with fakes; see the status section above for what has not been verified live.
 
 ## Validation behavior
 

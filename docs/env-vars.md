@@ -1,18 +1,21 @@
 # KiroSight Environment Variables
 
-KiroSight's future local Python backend will read provider credentials and backend configuration from environment variables. The backend is not part of the current extension scaffold; these names establish the configuration contract for its later implementation.
+KiroSight's local Python backend reads provider credentials and backend configuration from environment variables. The extension and the webview never read them.
 
-Copy `.env.example` to a local `.env` file only when backend work begins. Local `.env` files are ignored by Git. Never commit credentials or place them in extension source, webview code, logs, screenshots, or test fixtures.
+The backend needs no configuration to start: it listens on `127.0.0.1:8765` and uses the offline stub reasoning client. To use live services, copy `backend/.env.example` to `backend/.env` and fill in only what you need (the root `.env.example` lists the same names). `.env` files are ignored by Git. Never commit credentials or place them in extension source, webview code, logs, screenshots, or test fixtures. A variable already set in the process environment takes precedence over `backend/.env`.
 
-| Variable | Planned use |
+Live Amazon Bedrock inference has **not** been verified end to end (Task 7.14 is open because of account quota and throttling), and Deepgram has not been verified in a live end-to-end demo. Setting a variable here does not prove that the service will accept requests.
+
+| Variable | Purpose |
 |---|---|
-| `KIROSIGHT_HOST` | Host address for the local backend. The planned default is `127.0.0.1`; the backend will reject non-loopback addresses. |
-| `KIROSIGHT_PORT` | Port for the local backend. The planned default is `8765`. |
+| `KIROSIGHT_HOST` | Host address for the local backend. The default is `127.0.0.1`; the backend rejects non-loopback addresses. |
+| `KIROSIGHT_PORT` | Port for the local backend. The default is `8765`. |
 | `KIROSIGHT_AUTH_TOKEN` | Optional shared token for authenticating the extension-to-backend handshake. Any copy later held by the extension belongs in VS Code `SecretStorage`. |
-| `DEEPGRAM_API_KEY` | Credential used only by the backend for Deepgram speech-to-text (and, later, text-to-speech) requests. It is read from the environment when needed and never logged, echoed or sent to the webview. Without it no Deepgram call is made, `hello_ack` reports `capabilities.stt = false`, and a recording is answered with `CREDENTIAL_MISSING` naming this variable. |
+| `DEEPGRAM_API_KEY` | Credential used only by the backend for Deepgram speech-to-text and text-to-speech requests. It is read from the environment when needed and never logged, echoed or sent to the webview. Without it no Deepgram call is made, `hello_ack` reports `capabilities.stt = false`, and a recording is answered with `CREDENTIAL_MISSING` naming this variable. |
 | `DEEPGRAM_STT_MODEL` | Deepgram speech-to-text model. Defaults to `nova-2`. Letters, digits, `.`, `_`, `:` and `-` only (at most 64 characters); any other value disables speech-to-text and is never repeated in errors. |
 | `DEEPGRAM_TTS_MODEL` | Deepgram Aura text-to-speech model. Defaults to `aura-asteria-en`. Letters, digits, `.`, `_`, `:` and `-` only (at most 64 characters); any other value disables text-to-speech and is never repeated in errors. Audio is requested as MP3. Without `DEEPGRAM_API_KEY` no call is made, `hello_ack` reports `capabilities.tts = false`, and a `speech_request` is answered with `CREDENTIAL_MISSING` naming that variable. |
-| `AWS_REGION` | AWS region used by the future backend's Amazon Bedrock client. |
+| `AWS_REGION` | AWS region used by the backend's Amazon Bedrock client. |
+| `AWS_DEFAULT_REGION` | Fallback region for the Bedrock client, used only when `AWS_REGION` is unset (the standard AWS variable name). With neither set the region is `us-east-1`. |
 | `AWS_ACCESS_KEY_ID` | Access-key identifier used by the standard AWS credential chain when static or temporary credentials are selected. |
 | `AWS_SECRET_ACCESS_KEY` | Secret access key paired with `AWS_ACCESS_KEY_ID`. This value must never be logged or committed. |
 | `AWS_SESSION_TOKEN` | Session token used with temporary AWS credentials; omitted when the selected AWS credential source does not require one. |
@@ -22,9 +25,9 @@ Copy `.env.example` to a local `.env` file only when backend work begins. Local 
 
 ## Ownership and failure behavior
 
-- AWS and Deepgram variables are consumed only by the future local backend, never by the webview.
-- `KIROSIGHT_AUTH_TOKEN` is optional. If used, the backend reads it from the environment and the extension stores its copy in `SecretStorage`.
-- Missing provider credentials will disable only that provider-backed capability. Typed commands and deterministic local extension features must remain available.
+- AWS and Deepgram variables are consumed only by the local backend, never by the extension or the webview.
+- `KIROSIGHT_AUTH_TOKEN` is optional. If used, the backend reads it from the environment and the extension stores its copy in `SecretStorage` (run `KiroSight: Set Backend Token`).
+- Missing provider credentials disable only that provider-backed capability. Typed commands and deterministic local extension features must remain available.
 - `.env.example`, this document, and environment-variable references in source must stay synchronized as configuration is implemented.
 
 ## Choosing the reasoning client (stub or Amazon Bedrock)
