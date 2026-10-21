@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -93,10 +93,27 @@ describe('pinned dependencies', () => {
 
 describe('the workspace test command', () => {
   const settings = json('.vscode', 'settings.json');
+  const configured = String(settings['kirosight.testCommand']);
 
-  it('is npm test, which the package maps to this project\'s single Vitest run', () => {
-    expect(settings['kirosight.testCommand']).toBe('npm test');
+  it('is the confirmed Windows wrapper, powershell.exe -NoProfile -Command "npm.cmd test", and nothing else', () => {
+    expect(configured).toBe('powershell.exe -NoProfile -Command "npm.cmd test"');
+  });
+
+  it('runs only this project\'s test script: the inner command is npm.cmd test, which the package maps to one Vitest run', () => {
+    expect(/-Command "(.+)"$/.exec(configured)?.[1]).toBe('npm.cmd test');
     expect(json('package.json').scripts.test).toBe('vitest --run');
+  });
+
+  it('is safe to run: no profile, policy bypass, encoded or file script, download, chaining, redirection or parent path', () => {
+    expect(configured).toContain('-NoProfile');
+    for (const forbidden of [
+      /-ExecutionPolicy|-Bypass/i, /-EncodedCommand|-enc\b/i, /-File\b/i, /-NoExit/i,
+      /Invoke-Expression|\biex\b/i, /Invoke-WebRequest|\biwr\b|curl|wget|https?:/i,
+      /Start-Process|Set-|Remove-|Out-File/i, /[;&|<>`$]/, /\.\./, /extension/i,
+    ]) {
+      expect(configured).not.toMatch(forbidden);
+    }
+    expect(configured.trim()).toBe(configured);
   });
 
   it('is one plain command: no chaining, redirection, parent paths or the extension\'s own suite', () => {
@@ -133,9 +150,9 @@ describe('the workspace test command', () => {
     const summary = await pending;
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.command).toBe('npm test');
+    expect(calls[0]!.command).toBe(configured);
     expect(calls[0]!.options).toEqual({ shell: true, cwd: demo, windowsHide: true });
-    expect(summary).toMatchObject({ command: 'npm test', exitCode: 1, outcome: 'failed' });
+    expect(summary).toMatchObject({ command: configured, exitCode: 1, outcome: 'failed' });
   });
 });
 
@@ -146,7 +163,7 @@ describe('exactly one deliberate type error', () => {
     const tsc = join(extensionRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc');
     const result = spawnSync(
       `"${tsc}" -p "${join(demo, 'tsconfig.json')}" --noEmit --pretty false`,
-      { cwd: demo, shell: true, encoding: 'utf8', timeout: 120_000, windowsHide: true },
+      { cwd: demo, shell: true, encoding: 'utf8', timeout: 40_000, windowsHide: true },
     );
     const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     const errors = [...output.matchAll(/^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/gm)];
@@ -161,7 +178,7 @@ describe('exactly one deliberate type error', () => {
     const expectedLine = cart.split(/\r?\n/).findIndex((text) => text.includes('const label: string = lineTotal;')) + 1;
     expect(expectedLine).toBeGreaterThan(0);
     expect(Number(line)).toBe(expectedLine);
-  });
+  }, 45_000); // tsc runs as a real process; the default 5 s limit was too short under load
 
   it('sits inside the named function formatReceiptLine, with no suppression or cast to hide it', () => {
     const start = cart.indexOf('export function formatReceiptLine');
@@ -269,21 +286,32 @@ describe('compatibility with KiroSight\'s existing test-summary parser', () => {
     expect(summary).toMatchObject({ outcome: 'passed', passed: 7, failed: 0 });
   });
 
-  // After install: runs the fixture's own `npm test` through a shell, as KiroSight does, with the
-  // outer Vitest's markers removed from the environment, and feeds the REAL output to the parser.
-  it.skipIf(!existsSync(join(demo, 'node_modules', 'vitest')))(
-    'after install: the real output of npm test is parsed as 6 passed and 1 failed (non-zero exit is expected)',
-    () => {
+  // After install, on Windows: the exact command the demo configures, run by the real TestRunner as
+  // a real process, and its real output summarized by the existing parser. The process gets a COPY
+  // of the environment without the outer Vitest's markers (a Vitest started inside a Vitest worker
+  // would think it is that worker), so this test process's own environment is never changed.
+  it.skipIf(!existsSync(join(demo, 'node_modules', 'vitest')) || process.platform !== 'win32')(
+    'after install, on Windows: the configured command, run by the real TestRunner, is summarized as 6 passed and 1 failed',
+    async () => {
+      const settings = json('.vscode', 'settings.json');
+      resetVscodeMock();
+      setMockWorkspace([demo]);
+      setMockConfiguration({
+        'kirosight.testCommand': settings['kirosight.testCommand'],
+        'kirosight.testTimeoutSeconds': settings['kirosight.testTimeoutSeconds'],
+      });
       const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('VITEST') && key !== 'CI'));
-      const result = spawnSync('npm test', { cwd: demo, shell: true, encoding: 'utf8', timeout: 150_000, windowsHide: true, env });
-      const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-
-      const summary = parseTestOutput({
-        output, exitCode: result.status, command: 'npm test', outputTruncated: false, durationMs: 0,
+      const text: string[] = [];
+      const runner = new TestRunner({
+        spawner: (command, options) => spawn(command, { ...options, env }) as unknown as TestProcess,
+        createOutputChannel: () => ({ append: (value) => { text.push(value); }, dispose: () => undefined }),
       });
 
-      expect(result.status, output).toBe(1);
-      expect(summary, output).toMatchObject({ outcome: 'failed', passed: 6, failed: 1, totalFailedNames: 1 });
+      const summary = await runner.run();
+      const output = text.join('');
+
+      expect(output).not.toContain("reading 'config'");
+      expect(summary, output).toMatchObject({ outcome: 'failed', exitCode: 1, passed: 6, failed: 1, totalFailedNames: 1 });
       expect(summary.failingTests.map((test) => test.name).join('\n')).toContain(DELIBERATE_MARKER);
     },
     180_000,

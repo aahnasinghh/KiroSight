@@ -1,4 +1,4 @@
 {
-  "kirosight.testCommand": "npm test",
+  "kirosight.testCommand": "powershell.exe -NoProfile -Command \"npm.cmd test\"",
   "kirosight.testTimeoutSeconds": 120
 }

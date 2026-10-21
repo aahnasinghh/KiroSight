@@ -605,7 +605,7 @@ Scope guardrails taken from the approved spec:
   - Prepare the demo project with a known test runner, verify every documented failure mode, polish the accessibility details, write the demo script and README, and do a final integration pass.
   - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 14.1, 14.2, 14.3, 14.4, 14.5, 14.6, 15.4, 17.3, 17.4, 17.6_
 
-  - [ ] 10.1 Create the demo fixture project
+  - [x] 10.1 Create the demo fixture project
     - Create a small TypeScript project in `demo-project/` with exactly pinned dependencies and a known test runner (Vitest), one deliberate type error in a function, a second file for `OPEN_FILE`, and a test suite with a few passing tests and at least one failing test. Add `kirosight.testCommand` to the fixture's workspace settings and document that the workspace must be trusted for it to apply.
     - _Requirements: 2.1, 4.1, 4.4, 7.2, 7.3, 12.1_
 
