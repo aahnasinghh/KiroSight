@@ -412,3 +412,100 @@ describe('focus indicator, high contrast and forced colors (styles.css)', () => 
     expect(block('#status')).toContain('font-weight: 600');
   });
 });
+
+describe('confirmation prompt is announced once (NVDA duplicate regression)', () => {
+  const prompt = 'Run tests using "npm test"? Reply confirm, decline, cancel, or repeat.';
+  const pendingState = (key = 'key-1') => viewState({
+    statusKind: 'confirmation_pending',
+    transcript: [entry(1, 'user', 'run my tests'), entry(2, 'kirosight', prompt)],
+    latest: prompt,
+    pendingConfirmation: { promptText: prompt, presentationKey: key },
+  });
+
+  it('keeps the prompt in the transcript but opts that one line out of live announcement', () => {
+    const page = createPage();
+
+    page.deliver(pendingState());
+
+    const lines = Array.from(page.byId('transcript').children);
+    expect(lines.map((line) => line.textContent)).toEqual([
+      'You: run my tests',
+      `KiroSight: ${prompt}`,
+    ]);
+    expect(lines[0].hasAttribute('aria-live')).toBe(false);
+    expect(lines[1].getAttribute('aria-live')).toBe('off');
+    expect(lines[1].closest('[aria-hidden="true"]')).toBeNull();
+    expect(page.byId('transcript').getAttribute('aria-live')).toBe('polite');
+    expect(page.byId('transcript').getAttribute('role')).toBe('log');
+  });
+
+  it('puts the full prompt text in exactly one automatically announced place: the focused prompt', () => {
+    const page = createPage();
+
+    page.deliver(pendingState());
+
+    expect(page.document.activeElement).toBe(page.byId('confirm-prompt'));
+    expect(page.byId('confirm-prompt').textContent).toBe(prompt);
+    const live = '[aria-live]:not([aria-live="off"]), [role="log"], [role="status"], [role="alert"]';
+    const announcers = Array.from(page.document.querySelectorAll(live));
+    const announcingFullPrompt = announcers.filter((element) => {
+      const quiet = Array.from(element.querySelectorAll('[aria-live="off"]'))
+        .reduce((text, node) => text.replace(node.textContent ?? '', ''), element.textContent ?? '');
+      return quiet.includes(prompt);
+    });
+    expect(announcingFullPrompt).toEqual([]);
+  });
+
+  it('keeps the status short: it never repeats the prompt', () => {
+    const page = createPage();
+
+    page.deliver(pendingState());
+
+    expect(page.byId('status').textContent).toBe('Confirmation pending');
+    expect(page.byId('status').textContent).not.toContain('Reply confirm');
+  });
+
+  it('still announces other kirosight replies and ordinary lines politely', () => {
+    const page = createPage();
+
+    page.deliver(viewState({ transcript: [entry(1, 'kirosight', 'In login.ts')] }));
+
+    expect(page.byId('transcript').children[0].hasAttribute('aria-live')).toBe(false);
+  });
+
+  it('does not silence a later line that happens to repeat the prompt text after it resolved', () => {
+    const page = createPage();
+    page.deliver(pendingState());
+
+    page.deliver(viewState({
+      transcript: [entry(1, 'user', 'run my tests'), entry(2, 'kirosight', prompt), entry(3, 'kirosight', prompt)],
+    }));
+
+    const lines = Array.from(page.byId('transcript').children);
+    expect(lines[1].getAttribute('aria-live')).toBe('off');
+    expect(lines[2].hasAttribute('aria-live')).toBe(false);
+  });
+
+  it('adds the prompt line once and does not touch the transcript or focus when the same state repeats', () => {
+    const page = createPage();
+    page.deliver(pendingState());
+    const observer = page.watch(['transcript', 'confirm-prompt', 'status']);
+
+    page.deliver(pendingState());
+
+    expect(observer.takeRecords()).toEqual([]);
+    expect(page.document.activeElement).toBe(page.byId('confirm-prompt'));
+    observer.disconnect();
+  });
+
+  it('keeps Confirm and Decline named, reachable and returning focus to the input', () => {
+    const page = createPage();
+    page.deliver(pendingState());
+
+    expect(page.byId('confirm-yes').textContent).toBe('Confirm');
+    expect(page.byId('confirm-no').textContent).toBe('Decline');
+    expect(page.byId('confirm-yes').hasAttribute('tabindex')).toBe(false);
+    page.byId('confirm-no').click();
+    expect(page.document.activeElement).toBe(page.input);
+  });
+});

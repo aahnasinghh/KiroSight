@@ -641,7 +641,7 @@ Scope guardrails taken from the approved spec:
     - Confirm every command in the manifest is registered and documented, that the help response lists the supported commands, that throwaway spike code is removed, and that the complete build and both test suites (Vitest and pytest) pass. Verify that the demo journey works end to end with the backend running and, separately, with it stopped.
     - _Requirements: 8.2, 9.7, 10.4, 10.5, 14.3, 15.4, 18.5_
 
-  - [ ] 10.10 Final checkpoint - Ensure all tests pass, ask the user if questions arise.
+  - [x] 10.10 Final checkpoint - Ensure all tests pass, ask the user if questions arise.
     - Demo check: run the full demo journey from `docs/demo-script.md` and the accessibility checklist, and confirm text is available throughout.
 
 ## Notes

@@ -6,16 +6,27 @@ This is a manual checklist. A person has to run every step with the keyboard, a 
 
 Related requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 15.4.
 
-## Current status: NOT TESTED
+## Current status (Task 10.10 manual pass)
 
 | Section | Status |
 |---|---|
-| 1 Keyboard-only walkthrough | NOT TESTED |
-| 2 Screen reader pass (NVDA, JAWS or VoiceOver) | NOT TESTED |
-| 3 Speech off and backend stopped | NOT TESTED |
-| 4 Focus indicator contrast and high contrast | NOT TESTED |
+| 1 Keyboard-only walkthrough | PASS (7/7 checks reported by the tester) |
+| 2 Screen reader pass (NVDA) | PARTIAL: controls, transcript, confirmation prompts and buttons PASS; the rest NOT TESTED (see below) |
+| 3 Speech off and backend stopped | PARTIAL: typed demo with backend running and stopped PASS; speech-off (3.1) NOT TESTED |
+| 4 Focus indicator contrast and high contrast | PARTIAL: visual readability and focus visibility PASS in four themes and a Windows contrast theme; numerical 3:1 measurement NOT TESTED |
 
-This checklist is written but has not been executed. No keyboard, screen reader, high-contrast or contrast measurement result is recorded here. Executing it is pending and is required before final demo sign-off (Task 10.10). Change a status only after you have run that section yourself.
+Results above were reported by the tester after running the checks by hand. Items not listed as PASS were not performed and stay NOT TESTED. The individual tick boxes and Notes lines in the sections below were not filled in item by item; the tables here and in section 5 are the record.
+
+### Recorded results
+
+- **Keyboard only (section 1):** 7/7 checks passed.
+- **NVDA (section 2):** NVDA identified the controls, the transcript, the confirmation prompts and the Confirm and Decline buttons. A defect where the confirmation request was announced two or more times was found, fixed (the prompt's transcript line is no longer announced as it is added, and the focused prompt is the single announcement) and manually retested. NVDA version and the section 2.5 status table (Listening, Speaking, Voice unavailable and the other states) were not recorded: NOT TESTED.
+- **Backend (section 3.2):** the typed demo passed with the backend running and with it stopped. Individual 3.2 steps were not itemized.
+- **Speech off (section 3.1):** NOT TESTED.
+- **Themes (section 4):** Kiro Light, Kiro Dark, Light High Contrast and Dark High Contrast passed visual readability and focus visibility checks. The Windows contrast-theme walkthrough was completed.
+- **Numerical focus contrast (section 4, 3:1 ratio table):** NOT TESTED. The measurement was skipped, so the ratio table is empty on purpose.
+- **Live voice and Bedrock:** live Bedrock verification is blocked (Task 7.14), so a real Bedrock explanation is NOT TESTED. The Bedrock stub response was verified separately.
+- **Not performed:** full WCAG validation, expert accessibility review, axe-core testing (optional Task 10.5, deferred).
 
 ## How to use this document
 
@@ -239,12 +250,14 @@ Notes:
 
 | Section | Result (replace NOT TESTED with pass, fail or partial after you run it) | Issues found |
 |---|---|---|
-| 1 Keyboard-only walkthrough | NOT TESTED | |
-| 2 Screen reader pass | NOT TESTED | |
-| 3 Speech off and backend stopped | NOT TESTED | |
-| 4 Focus indicator contrast | NOT TESTED | |
+| 1 Keyboard-only walkthrough | PASS (7/7) | None reported |
+| 2 Screen reader pass (NVDA) | PARTIAL: controls, transcript, confirmation prompts and buttons PASS; 2.5 status states NOT TESTED | Duplicate confirmation announcement found, fixed and retested |
+| 3 Speech off and backend stopped | PARTIAL: backend running and stopped PASS (typed demo); 3.1 speech off NOT TESTED | None reported |
+| 4 Focus indicator contrast | PARTIAL: visual readability and focus visibility PASS in Kiro Light, Kiro Dark, Light High Contrast, Dark High Contrast and a Windows contrast theme; numerical 3:1 ratio NOT TESTED | Ratio table intentionally left empty |
 
-Tester sign-off (name, date):
+Tester sign-off (name, date): not signed. Fill in your name and date.
+
+This is evidence for the demo, not a conformance claim. Full WCAG validation still needs assistive technology testing and review by an accessibility expert.
 
 ## What this does not cover
 

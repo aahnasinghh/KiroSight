@@ -82,9 +82,17 @@
     return label + via + ': ' + entry.text;
   }
 
-  function appendEntry(entry) {
+  // quietText is the prompt of the confirmation being presented in the same view_state, or null.
+  // The prompt takes keyboard focus and is read from there, so its transcript line is added with
+  // aria-live="off": it stays in the log, in the reading order, and is read like any other line when
+  // the user reviews the transcript, but it is not announced a second time as it is added.
+  // Every other entry keeps the log's polite announcement.
+  function appendEntry(entry, quietText) {
     var line = document.createElement('div');
     line.textContent = entryText(entry);
+    if (typeof quietText === 'string' && entry.role === 'kirosight' && entry.text === quietText) {
+      line.setAttribute('aria-live', 'off');
+    }
     elements.transcript.appendChild(line);
     renderedSeqs.push(entry.seq);
   }
@@ -97,7 +105,7 @@
 
   // Append only entries not yet shown so the log is not re-announced as a whole.
   // Rebuild only when the host's history no longer extends what is displayed.
-  function renderTranscript(entries) {
+  function renderTranscript(entries, quietText) {
     var extendsDisplayed = entries.length >= renderedSeqs.length;
     for (var i = 0; extendsDisplayed && i < renderedSeqs.length; i += 1) {
       if (entries[i].seq !== renderedSeqs[i]) {
@@ -111,7 +119,7 @@
     }
 
     for (var j = renderedSeqs.length; j < entries.length; j += 1) {
-      appendEntry(entries[j]);
+      appendEntry(entries[j], quietText);
     }
   }
 
@@ -156,7 +164,11 @@
     }
 
     if (Array.isArray(message.transcript) && message.transcript.every(isEntry)) {
-      renderTranscript(message.transcript);
+      var pending = message.pendingConfirmation;
+      var promptNow = pending && typeof pending.promptText === 'string' && pending.promptText !== ''
+        ? pending.promptText
+        : null;
+      renderTranscript(message.transcript, promptNow);
     }
 
     setText(elements.latest, typeof message.latest === 'string' ? message.latest : '');
