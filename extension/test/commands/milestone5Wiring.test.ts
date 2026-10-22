@@ -156,7 +156,8 @@ describe('Milestone 5 wiring', () => {
   });
 
   it('constructs exactly one of each shared Milestone 5 object and keeps commands off the runner', () => {
-    const source = readFileSync(resolvePath(__dirname, '../../src/extension.ts'), 'utf8');
+    // Normalize CRLF to LF so the multi-line expectations below hold on Windows and Linux alike.
+    const source = readFileSync(resolvePath(__dirname, '../../src/extension.ts'), 'utf8').replace(/\r\n?/g, '\n');
 
     for (const constructor of [
       'TestRunner', 'TestRunStore', 'ConfirmationManager', 'ActionGate', 'GateConfirmationController',

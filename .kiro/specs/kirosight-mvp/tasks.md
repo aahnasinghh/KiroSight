@@ -637,7 +637,7 @@ Scope guardrails taken from the approved spec:
     - Write the root `README.md` (what KiroSight is, setup for the extension and backend, environment variables, settings, how to activate with and without a keybinding, the loopback-only backend, the limits and non-goals, and that it supplements the user's screen reader). Finalize `docs/env-vars.md`, `docs/protocol.md` and `docs/spike-results.md` (all five spike outcomes and the decisions taken).
     - _Requirements: 9.7, 9.8, 9.9, 9.10, 17.4_
 
-  - [ ] 10.9 Final integration pass
+  - [x] 10.9 Final integration pass
     - Confirm every command in the manifest is registered and documented, that the help response lists the supported commands, that throwaway spike code is removed, and that the complete build and both test suites (Vitest and pytest) pass. Verify that the demo journey works end to end with the backend running and, separately, with it stopped.
     - _Requirements: 8.2, 9.7, 10.4, 10.5, 14.3, 15.4, 18.5_
 

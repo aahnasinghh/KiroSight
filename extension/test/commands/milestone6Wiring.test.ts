@@ -494,7 +494,9 @@ describe('Task 6.19 backend token', () => {
 });
 
 describe('Task 6.19 composition root', () => {
-  const source = readFileSync(resolvePath(__dirname, '../../src/extension.ts'), 'utf8');
+  // Line endings are normalized so the multi-line expectations below hold for a CRLF checkout
+  // (Windows, core.autocrlf) as well as for LF (Linux, CI). Only the newline style is ignored.
+  const source = readFileSync(resolvePath(__dirname, '../../src/extension.ts'), 'utf8').replace(/\r\n?/g, '\n');
 
   it('constructs exactly one shared client, manager and gateway and gives the gateway that same client', () => {
     for (const constructor of ['BackendClient', 'ConnectionManager', 'BackendAgentGateway']) {
