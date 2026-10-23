@@ -20,11 +20,11 @@ KiroSight is an accessibility agent for blind and low-vision software developers
 8. [Accessibility, security and limitations](#accessibility-security-and-limitations)
 9. [Documentation and reference](#documentation-and-reference)
 
-## Demo video
+## Demo Video
 
-> **YouTube demo: link to be added before submission.**
->
-> <!-- Replace this note with: [Watch the KiroSight demo on YouTube](https://www.youtube.com/watch?v=VIDEO_ID) -->
+[![Watch the KiroSight demo](https://img.youtube.com/vi/6TH1csp1WPo/maxresdefault.jpg)](https://youtu.be/6TH1csp1WPo)
+
+[Watch the KiroSight demo on YouTube](https://youtu.be/6TH1csp1WPo)
 
 The demo journey is scripted in [docs/demo-script.md](docs/demo-script.md). That script is written but **not yet rehearsed end to end**.
 
